@@ -17,6 +17,12 @@
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="styles.css">
+  <script>
+    window.addEventListener('beforeinstallprompt', function (event) {
+      event.preventDefault();
+      window.__deferredInstallPrompt = event;
+    });
+  </script>
   <script type="module" src="pwa.js"></script>
   <script type="module" src="app.js"></script>
 </head>
@@ -34,8 +40,13 @@
         <span id="account-label">Syncing</span>
       </p>
       <div class="download-slot">
-        <button type="button" id="download-app" class="download-btn" aria-haspopup="dialog" aria-controls="install-dialog" aria-expanded="false">Download app</button>
+        <button type="button" id="download-app" class="download-btn" aria-controls="install-hint" aria-expanded="false">Download app</button>
         <p id="already-installed" class="already-installed" hidden>Already installed</p>
+        <p id="install-hint" class="install-hint" role="status" hidden>
+          <span id="install-hint-text"></span>
+          <svg id="install-hint-arrow" class="install-arrow" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M12 4v13"/><path d="M7 12l5 6 5-6"/></svg>
+          <button type="button" id="install-hint-close" aria-label="Dismiss install hint">✕</button>
+        </p>
       </div>
     </div>
   </header>
@@ -89,75 +100,6 @@
     <p class="shortcuts">Swipe a task right to complete, left to delete. The list is kept on this device and shared when Sync is on.</p>
     <p class="shortcuts">Tap a task to edit it or add a note. Tap the date for a quick in-list edit.</p>
   </footer>
-
-  <dialog id="install-dialog" class="editor install-dialog" aria-labelledby="install-heading" aria-describedby="install-honesty">
-    <div class="editor-panel">
-      <div class="editor-handle" aria-hidden="true"></div>
-      <h2 id="install-heading">Download app</h2>
-      <p id="install-honesty" class="hint">This installs the web app on your device. There is no app store.</p>
-
-      <p id="install-prompt-note" class="install-note" hidden>Your browser can install this web app in one tap.</p>
-      <button type="button" id="install-now" class="install-action" hidden>Install</button>
-
-      <details id="opt-ios" class="install-option">
-        <summary>iPhone / iPad <span class="device-badge" hidden>This device</span></summary>
-        <div class="install-body">
-          <p id="ios-not-safari" class="install-warn" hidden>You're not in Safari. Open this page in Safari first. Other browsers on iPhone and iPad can't add it.</p>
-          <ol class="install-steps">
-            <li>
-              <span class="step-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M14.8 9.2l-1.3 4.3-4.3 1.3 1.3-4.3z"/></svg>
-              </span>
-              <span><strong>1. Open in Safari.</strong> It has to be Safari. Chrome and other browsers on iPhone and iPad cannot do this.</span>
-            </li>
-            <li>
-              <span class="step-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path d="M12 3.5v10"/><path d="M8 7.5l4-4 4 4"/><path d="M6 12.5v6a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-6"/></svg>
-              </span>
-              <span><strong>2. Tap Share.</strong> The square with an arrow pointing up, at the bottom of Safari.</span>
-            </li>
-            <li>
-              <span class="step-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="16" rx="2"/><path d="M12 9v6M9 12h6"/></svg>
-              </span>
-              <span><strong>3. Tap Add to Home Screen.</strong> Scroll the share sheet if you don't see it yet.</span>
-            </li>
-            <li>
-              <span class="step-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path d="M5 12.5l4.2 4.2L19 7.5"/></svg>
-              </span>
-              <span><strong>4. Tap Add.</strong> The icon then opens the app from your Home Screen.</span>
-            </li>
-          </ol>
-        </div>
-      </details>
-
-      <details id="opt-windows" class="install-option">
-        <summary>Windows / Microsoft <span class="device-badge" hidden>This device</span></summary>
-        <div class="install-body">
-          <p class="install-note">Use Install if you see it. You can also do it from the browser:</p>
-          <p><strong>Microsoft Edge.</strong> Open the <span aria-hidden="true">⋯</span><span class="sr-only"> more</span> menu, then <strong>Apps</strong>, then <strong>Install this site as an app</strong>.</p>
-          <p><strong>Google Chrome.</strong> Click the install icon at the right end of the address bar.</p>
-        </div>
-      </details>
-
-      <details id="opt-android" class="install-option is-secondary">
-        <summary>Android <span class="device-badge" hidden>This device</span></summary>
-        <div class="install-body">
-          <p>In Chrome, open the <span aria-hidden="true">⋮</span><span class="sr-only"> menu</span> and tap <strong>Install app</strong> or <strong>Add to Home screen</strong>.</p>
-        </div>
-      </details>
-
-      <details id="opt-mac" class="install-option is-secondary">
-        <summary>Mac <span class="device-badge" hidden>This device</span></summary>
-        <div class="install-body">
-          <p>In Chrome or Edge, click the install icon in the address bar. In Safari, choose <strong>File → Add to Dock</strong>.</p>
-        </div>
-      </details>
-
-      <button type="button" id="install-close" class="install-close">Close</button>
-    </div>
-  </dialog>
 
   <dialog id="editor" class="editor" aria-labelledby="editor-heading" aria-describedby="editor-hint">
     <form id="editor-form" class="editor-panel">

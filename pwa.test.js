@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { detectPlatform, isIosSafari, isInstalled } from './pwa.js';
+import { detectPlatform, isIosSafari, isInstalled, installFallback, resolveInstallPrompt } from './pwa.js';
 
 const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 const ipad = 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
@@ -26,6 +26,32 @@ test('isIosSafari is only Safari, not Chrome on iPhone', () => {
   assert.equal(isIosSafari(iphone), true);
   assert.equal(isIosSafari(chromeIOS), false);
   assert.equal(isIosSafari(windows), true);
+});
+
+test('a prompt saved before the button exists is the one that runs', () => {
+  const early = { prompt() {} };
+  assert.equal(resolveInstallPrompt(null, early), early);
+  assert.equal(resolveInstallPrompt(early, null), early);
+  assert.equal(resolveInstallPrompt(null, null), null);
+});
+
+test('install fallback is one line, and only iOS Safari points at Share', () => {
+  const ios = installFallback(iphone);
+  assert.equal(ios.kind, 'ios');
+  assert.equal(ios.text, 'Share, then Add to Home Screen');
+  assert.match(installFallback(chromeIOS).text, /Safari/);
+  assert.equal(installFallback(chromeIOS).kind, 'text');
+  assert.match(installFallback(windows).text, /address bar/);
+  assert.match(installFallback(android).text, /Install app/);
+  const edge = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0';
+  assert.match(installFallback(edge).text, /Apps/);
+  const firefox = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0';
+  assert.match(installFallback(firefox).text, /Firefox/);
+  assert.match(installFallback(firefox).text, /Chrome or Edge/);
+  assert.match(installFallback(mac).text, /Add to Dock/);
+  for (const sample of [iphone, chromeIOS, windows, android, edge, firefox, mac]) {
+    assert.equal(installFallback(sample).text.includes('\n'), false);
+  }
 });
 
 test('isInstalled accepts standalone and the iOS navigator flag', () => {

@@ -10,7 +10,7 @@ It is plain HTML, CSS and JavaScript. There is nothing to build and nothing to i
 | `index.html`, `app.js`, `store.js`, `sync.js`, `parser.js`, `styles.css` | The app itself |
 | `manifest.webmanifest` | Tells browsers the app's name, colours and icons so it can be installed |
 | `sw.js` | The service worker. It saves the app on your device so it opens offline |
-| `pwa.js` | Registers the service worker and the Download app dialog |
+| `pwa.js` | Registers the service worker and the Download app button |
 | `icons/` | App icons. `icons/generate_icons.py` re-creates them (needs Python with Pillow) |
 | `.github/workflows/pages.yml` | Publishes the app to GitHub Pages |
 
@@ -41,19 +41,7 @@ Installed copies are kept on the device. When you change files, edit `VERSION` a
 
 ## Install it on your device
 
-Open the online address and tap **Download app** in the header. That installs this web app on the device. There is no app store. If the header already says **Already installed**, you are done.
-
-### iPhone / iPad
-This has to be **Safari**. Tap Share, then Add to Home Screen, then Add. The dialog in the app shows the same steps with pictures.
-
-### Windows
-If the dialog shows **Install**, use that. Otherwise, in Edge open the **⋯** menu, then **Apps**, then **Install this site as an app**. In Chrome, click the install icon at the right end of the address bar.
-
-### Android
-In Chrome, open the **⋮** menu and tap **Install app** or **Add to Home screen**.
-
-### Mac
-In Chrome or Edge, click the install icon in the address bar. In Safari, choose **File → Add to Dock**. Firefox on a computer does not install web apps.
+Open the online address and tap **Download app** in the header. In Chrome, Edge, and Android that opens the browser’s own install prompt. There is no app store. On iPhone or iPad, Safari has no install prompt: the button shows a one-line hint, Share then Add to Home Screen. If the header already says **Already installed**, you are done.
 
 ## Good to know
 
