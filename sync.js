@@ -1,14 +1,13 @@
-// Optional cross-device sync. The list stays local-first: this module is only
-// used after the owner sets up a passphrase, and a failure never clears tasks.
+// Automatic cross-device sync for the single owner. The list stays local-first:
+// a failure never clears tasks, and the app works with sync switched off.
 import { migrate } from './store.js';
 
 export const SUPABASE_URL = 'https://ymqknizwlyzmemsizdls.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_TgJumUd6xOE6GKRX9dkLzg_fPNd3KrH';
 export const SUPABASE_MODULE = 'https://esm.sh/@supabase/supabase-js@2.49.4/es2022/supabase-js.bundle.mjs';
-export const APP_SALT = 'braindump-todo-sync-v1';
-export const PBKDF2_ITERATIONS = 210000;
+export const SYNC_EMAIL = 'todo-owner@todo-app.example.com';
+export const SYNC_PASSWORD = 'braindump-todo-owner-7kQ4mN2p';
 export const TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const EMAIL_DOMAIN = 'sfox2006.github.io';
 
 export function toMillis(value) {
   if (Number.isFinite(value)) return value;
@@ -19,44 +18,40 @@ export function toMillis(value) {
   return 0;
 }
 
-function bytesToHex(buffer) {
-  return [...new Uint8Array(buffer)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/** Same passphrase always yields the same email and password. Nothing is sent until sign-up/in. */
-export async function deriveCredentials(passphrase) {
-  const phrase = String(passphrase ?? '');
-  if (phrase.length < 12) {
-    const err = new Error('Use at least 12 characters.');
-    err.code = 'short';
-    throw err;
-  }
-  const enc = new TextEncoder();
-  const digest = await crypto.subtle.digest('SHA-256', enc.encode(phrase));
-  const email = `todo-${bytesToHex(digest).slice(0, 16)}@${EMAIL_DOMAIN}`;
-  const material = await crypto.subtle.importKey('raw', enc.encode(phrase), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits({
-    name: 'PBKDF2',
-    salt: enc.encode(APP_SALT),
-    iterations: PBKDF2_ITERATIONS,
-    hash: 'SHA-256',
-  }, material, 256);
-  return { email, password: bytesToHex(bits) };
-}
-
-export function explainAuthError(error, { intent, session } = {}) {
+export function isInvalidCredentials(error) {
   const msg = (error && error.message) || '';
-  if (/confirm/i.test(msg) || (intent === 'signup' && !error && !session)) {
-    return 'Email confirmation is still turned on, so sync could not start. Turn off Confirm email under Authentication → Providers → Email, then try Create sync again. Your tasks on this device were not changed.';
-  }
-  if (/already registered|already been registered|already exists|user already/i.test(msg)) {
-    return 'Sync is already set up for this passphrase. Tap Connect.';
-  }
-  if (/invalid login|invalid credentials|invalid email or password/i.test(msg)) {
-    return "That passphrase doesn't match. Use the same one you typed when you created sync.";
-  }
-  if (msg) return `${msg} Your tasks on this device were not changed.`;
-  return 'Could not reach sync. Your tasks on this device were not changed.';
+  return /invalid login|invalid credentials|invalid email or password|user not found/i.test(msg);
+}
+
+export function isAlreadyRegistered(error) {
+  const msg = (error && error.message) || '';
+  return /already registered|already been registered|already exists|user already/i.test(msg);
+}
+
+/**
+ * Use the built-in owner account. An existing session for that email is reused.
+ * A missing account (sign-in says invalid credentials) is created once, then signed in.
+ */
+export async function ensureOwnerSession(client) {
+  const creds = { email: SYNC_EMAIL, password: SYNC_PASSWORD };
+  const { data, error } = await client.auth.getSession();
+  if (error) throw error;
+  const current = data && data.session;
+  const email = current && current.user && current.user.email;
+  if (current && email === SYNC_EMAIL) return current;
+  if (current) await client.auth.signOut({ scope: 'local' });
+
+  const signed = await client.auth.signInWithPassword(creds);
+  if (signed.data && signed.data.session) return signed.data.session;
+  if (signed.error && !isInvalidCredentials(signed.error)) throw signed.error;
+
+  const created = await client.auth.signUp(creds);
+  if (created.data && created.data.session) return created.data.session;
+  if (created.error && !isAlreadyRegistered(created.error)) throw created.error;
+
+  const again = await client.auth.signInWithPassword(creds);
+  if (again.data && again.data.session) return again.data.session;
+  throw again.error || created.error || signed.error || new Error('Could not start sync');
 }
 
 function coerceTask(id, updatedAt, data) {

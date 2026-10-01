@@ -21,22 +21,89 @@ const remote = (t, deleted = false) => ({
   id: t.id, data: t, deleted, updated_at: new Date(t.updatedAt).toISOString(),
 });
 
-test('passphrase derives a stable email and password', async () => {
-  await assert.rejects(() => sync.deriveCredentials('too short'), /12 characters/);
-  const a = await sync.deriveCredentials('correct horse battery');
-  const b = await sync.deriveCredentials('correct horse battery');
-  const c = await sync.deriveCredentials('correct horse battery!');
-  assert.deepEqual(a, b);
-  assert.match(a.email, /^todo-[0-9a-f]{16}@sfox2006\.github\.io$/);
-  assert.match(a.password, /^[0-9a-f]{64}$/);
-  assert.notEqual(a.email, c.email);
-  assert.notEqual(a.password, c.password);
+const ownerSession = { user: { id: 'owner', email: sync.SYNC_EMAIL } };
+
+function fakeAuth(script) {
+  const calls = [];
+  let stored = script.existing || null;
+  const client = {
+    calls,
+    auth: {
+      async getSession() {
+        calls.push('getSession');
+        return { data: { session: stored }, error: null };
+      },
+      async signInWithPassword(creds) {
+        calls.push('signIn');
+        assert.equal(creds.email, sync.SYNC_EMAIL);
+        assert.equal(creds.password, sync.SYNC_PASSWORD);
+        if (script.signInError && calls.filter((c) => c === 'signIn').length <= (script.failSignIns || 1)) {
+          return { data: { session: null }, error: script.signInError };
+        }
+        stored = script.session || ownerSession;
+        return { data: { session: stored }, error: null };
+      },
+      async signUp(creds) {
+        calls.push('signUp');
+        assert.equal(creds.email, sync.SYNC_EMAIL);
+        assert.equal(creds.password, sync.SYNC_PASSWORD);
+        if (script.signUpError) return { data: { session: null }, error: script.signUpError };
+        stored = script.session || ownerSession;
+        return { data: { session: stored }, error: null };
+      },
+      async signOut() {
+        calls.push('signOut');
+        stored = null;
+        return { error: null };
+      },
+    },
+  };
+  return client;
+}
+
+test('the built-in account is a fixed email and password', () => {
+  assert.equal(sync.SYNC_EMAIL, 'todo-owner@todo-app.example.com');
+  assert.equal(sync.SYNC_PASSWORD, 'braindump-todo-owner-7kQ4mN2p');
+  assert.equal(sync.isInvalidCredentials({ message: 'Invalid login credentials' }), true);
+  assert.equal(sync.isInvalidCredentials({ message: 'Failed to fetch' }), false);
+  assert.equal(sync.isAlreadyRegistered({ message: 'User already registered' }), true);
 });
 
-test('auth errors stay non-destructive and readable', () => {
-  assert.match(sync.explainAuthError(null, { intent: 'signup', session: null }), /Confirm email/);
-  assert.match(sync.explainAuthError({ message: 'User already registered' }, { intent: 'signup' }), /Tap Connect/);
-  assert.match(sync.explainAuthError({ message: 'Invalid login credentials' }, { intent: 'signin' }), /doesn't match/);
+test('an existing owner session is reused without signing in again', async () => {
+  const client = fakeAuth({ existing: ownerSession });
+  const session = await sync.ensureOwnerSession(client);
+  assert.equal(session, ownerSession);
+  assert.deepEqual(client.calls, ['getSession']);
+});
+
+test('a different saved session is replaced, then the owner signs in', async () => {
+  const client = fakeAuth({ existing: { user: { id: 'other', email: 'someone@example.com' } } });
+  const session = await sync.ensureOwnerSession(client);
+  assert.equal(session.user.email, sync.SYNC_EMAIL);
+  assert.deepEqual(client.calls, ['getSession', 'signOut', 'signIn']);
+});
+
+test('invalid credentials signs the owner up once, and other errors do not', async () => {
+  const created = fakeAuth({ signInError: { message: 'Invalid login credentials' } });
+  const session = await sync.ensureOwnerSession(created);
+  assert.equal(session.user.email, sync.SYNC_EMAIL);
+  assert.deepEqual(created.calls, ['getSession', 'signIn', 'signUp']);
+
+  const raced = fakeAuth({
+    signInError: { message: 'Invalid login credentials' },
+    signUpError: { message: 'User already registered' },
+    failSignIns: 1,
+  });
+  const again = await sync.ensureOwnerSession(raced);
+  assert.equal(again.user.email, sync.SYNC_EMAIL);
+  assert.deepEqual(raced.calls, ['getSession', 'signIn', 'signUp', 'signIn']);
+
+  const offline = fakeAuth({ signInError: { message: 'Failed to fetch' } });
+  await assert.rejects(
+    () => sync.ensureOwnerSession(offline),
+    (err) => err && err.message === 'Failed to fetch',
+  );
+  assert.deepEqual(offline.calls, ['getSession', 'signIn']);
 });
 
 test('merge keeps every id and lets the newest updatedAt win', () => {

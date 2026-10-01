@@ -65,6 +65,6 @@ Safari on a Mac: choose **File → Add to Dock**. Firefox on desktop does not su
 ## Good to know
 
 - Tap a task to edit the title, date, time, and an optional note. A task with a note shows a short preview in the list, and the search box looks through notes too. Notes are included in backups, and they travel with the task when sync is on.
-- Your to-dos are stored on this device and the app works offline with no account. Sync in the header is optional: create it once with a long passphrase, then connect other devices with that same passphrase. After that, the session stays on the device until you disconnect it.
+- Your to-dos are stored on this device and the app works offline. When you are online, the same list is shared automatically with every device that opens the app. A switch at the bottom turns that sync off on this device.
 - Clearing your browser data for the site will erase your to-dos.
 - After the first visit the app opens without internet.
