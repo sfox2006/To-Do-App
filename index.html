@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Brain Dump · To-do</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Dump everything on your mind into one box. It becomes a tidy to-do list sorted by date.">
+  <meta name="theme-color" content="#f6f7fb" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Brain Dump">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="pwa.js"></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#dump">Skip to brain dump</a>
+
+  <header class="top">
+    <h1>Brain Dump</h1>
+    <p class="tag">Type or dictate everything. We'll sort it out.</p>
+  </header>
+
+  <main>
+    <form id="dump-form" class="dump" autocomplete="off">
+      <label for="dump" class="dump-label">What's on your mind?</label>
+      <textarea id="dump" name="dump" rows="5" enterkeyhint="enter" spellcheck="true"
+        placeholder="buy milk tomorrow, call mum Friday, dentist 3pm next Tuesday, renew passport…"
+        aria-describedby="dump-hint"></textarea>
+      <div class="dump-row">
+        <p id="dump-hint" class="hint" aria-live="polite">
+          <span id="dump-count">Separate tasks with commas, new lines or “and then”.</span>
+        </p>
+        <button type="button" id="example" class="link">Try an example</button>
+      </div>
+      <button type="submit" id="submit" class="primary">
+        Add tasks <kbd class="kbd" aria-hidden="true" id="kbd-hint">Ctrl ⏎</kbd>
+      </button>
+    </form>
+
+    <div class="search" role="search">
+      <label for="search" class="sr-only">Search tasks</label>
+      <input id="search" type="search" placeholder="Search tasks…  ( / )" autocomplete="off">
+      <p id="search-status" class="sr-only" aria-live="polite"></p>
+    </div>
+
+    <div id="lists"></div>
+
+    <details id="completed" class="completed" hidden>
+      <summary><span>Completed <span id="completed-count" class="count"></span></span></summary>
+      <ul id="completed-list" class="tasks"></ul>
+      <button type="button" id="clear-completed" class="danger-ghost">Clear completed</button>
+    </details>
+
+    <p id="empty" class="empty" hidden></p>
+  </main>
+
+  <footer class="foot">
+    <div class="foot-buttons">
+      <button type="button" id="export" class="ghost">Export backup</button>
+      <button type="button" id="import" class="ghost">Import backup</button>
+      <input id="import-file" type="file" accept="application/json,.json" hidden>
+    </div>
+    <p class="shortcuts"><kbd>Ctrl/⌘</kbd>+<kbd>Enter</kbd> add · <kbd>/</kbd> search · <kbd>N</kbd> new dump · <kbd>Esc</kbd> cancel</p>
+    <p class="shortcuts">Swipe a task right to complete, left to delete. Data stays on this device.</p>
+  </footer>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden>
+    <span id="toast-msg"></span>
+    <button type="button" id="toast-action" class="toast-action" hidden></button>
+  </div>
+</body>
+</html>
