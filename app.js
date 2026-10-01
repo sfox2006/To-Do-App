@@ -464,7 +464,7 @@ fileEl.addEventListener('change', async () => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if ($('#editor').open) return;
+  if ($('#editor').open || ($('#install-dialog') && $('#install-dialog').open)) return;
   const tag = (e.target.tagName || '').toLowerCase();
   const typing = tag === 'input' || tag === 'textarea' || e.target.isContentEditable;
   if (e.key === 'Escape' && !typing) { hideToast(); return; }

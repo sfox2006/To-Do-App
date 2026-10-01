@@ -31,10 +31,23 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 kbd { font: 600 .75em ui-monospace, monospace; padding: .1em .45em; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; background: var(--surface); }
 
 .top { padding: 1.25rem 1rem .25rem; }
-.top-bar { display: flex; justify-content: space-between; align-items: flex-start; gap: .75rem; }
+.top-bar { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: .65rem .75rem; }
 .top h1 { margin: 0; font-size: 1.6rem; letter-spacing: -.02em; }
 .tag { margin: .1rem 0 0; color: var(--muted); }
-.account { position: relative; flex: none; }
+.sync-status { justify-self: end; }
+.download-slot { grid-column: 1 / -1; }
+.download-btn, .install-action {
+  min-height: 2.75rem; padding: 0 1.1rem; border: 0; border-radius: 999px;
+  background: var(--accent); color: var(--accent-text); font-weight: 700; font-size: .95rem;
+}
+.download-btn { width: 100%; }
+.download-btn:hover, .install-action:hover { filter: brightness(1.08); }
+.download-btn:active, .install-action:active { transform: scale(.98); }
+.already-installed {
+  margin: 0; min-height: 2.75rem; display: flex; align-items: center; justify-content: center;
+  font-weight: 700; color: var(--ok);
+}
+.already-installed[hidden] { display: none; }
 .sync-status {
   display: inline-flex; align-items: center; gap: .4rem; min-height: 2.75rem; margin: 0;
   font-weight: 650; font-size: .85rem; color: var(--muted);
@@ -188,6 +201,10 @@ main { padding: 0 1rem; }
 @media (min-width: 40rem) {
   .top { padding-top: 2rem; }
   .top h1 { font-size: 2rem; }
+  .top-bar { grid-template-columns: 1fr auto auto; align-items: center; }
+  .download-slot { grid-column: 2; grid-row: 1; }
+  .sync-status { grid-column: 3; grid-row: 1; }
+  .download-btn { width: auto; }
   .dump textarea { min-height: 11rem; }
 }
 /* Edit task: bottom sheet on a phone, centered dialog on a laptop. */
@@ -237,6 +254,42 @@ dialog.editor::backdrop { background: color-mix(in srgb, #0f1115 48%, transparen
     padding: 1.15rem 1.25rem 1.15rem; max-height: min(85dvh, 40rem);
   }
   .editor-handle { display: none; }
+  dialog.install-dialog .editor-panel { width: min(32rem, 100%); }
+}
+.install-option {
+  border: 1px solid var(--border); border-radius: 14px; background: var(--bg); padding: 0 .2rem 0 .85rem;
+}
+.install-option.is-current { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.install-option summary {
+  min-height: 2.75rem; display: flex; align-items: center; gap: .5rem; cursor: pointer;
+  font-weight: 700; list-style: none;
+}
+.install-option summary::-webkit-details-marker { display: none; }
+.install-option.is-secondary:not(.is-current) summary { font-weight: 600; color: var(--muted); }
+.install-option summary::after {
+  content: ''; width: .45rem; height: .45rem; margin-left: auto; margin-right: .7rem; flex: none;
+  border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg);
+}
+.install-option[open] summary::after { transform: rotate(225deg); margin-top: .25rem; }
+.install-option:has(.device-badge:not([hidden])) summary::after { margin-left: .35rem; }
+.device-badge {
+  margin-left: auto; font-size: .72rem; font-weight: 700; color: var(--accent); background: var(--accent-soft);
+  border-radius: 999px; padding: .15rem .55rem; white-space: nowrap;
+}
+.install-body { padding: 0 .7rem .9rem 0; display: grid; gap: .65rem; }
+.install-body p { margin: 0; }
+.install-note { color: var(--muted); font-size: .9rem; }
+.install-warn { padding: .65rem .75rem; border-radius: 12px; background: var(--danger-soft); color: var(--danger); font-size: .9rem; }
+.install-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: .75rem; }
+.install-steps li { display: grid; grid-template-columns: 2.75rem 1fr; gap: .75rem; align-items: center; }
+.step-icon {
+  width: 2.75rem; height: 2.75rem; border-radius: 12px; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent);
+}
+.step-icon svg { width: 1.4rem; height: 1.4rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.install-action { width: 100%; }
+.install-close {
+  min-height: 2.75rem; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2); font-weight: 650;
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }

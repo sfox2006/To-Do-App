@@ -10,7 +10,7 @@ It is plain HTML, CSS and JavaScript. There is nothing to build and nothing to i
 | `index.html`, `app.js`, `store.js`, `sync.js`, `parser.js`, `styles.css` | The app itself |
 | `manifest.webmanifest` | Tells browsers the app's name, colours and icons so it can be installed |
 | `sw.js` | The service worker. It saves the app on your device so it opens offline |
-| `pwa.js` | Registers the service worker, shows the "Install app" button and the iPhone hint |
+| `pwa.js` | Registers the service worker and the Download app dialog |
 | `icons/` | App icons. `icons/generate_icons.py` re-creates them (needs Python with Pillow) |
 | `.github/workflows/pages.yml` | Publishes the app to GitHub Pages |
 
@@ -41,26 +41,19 @@ Installed copies are kept on the device. When you change files, edit `VERSION` a
 
 ## Install it on your device
 
-You need to open the **online** (https) address, or `localhost` on your own computer.
+Open the online address and tap **Download app** in the header. That installs this web app on the device. There is no app store. If the header already says **Already installed**, you are done.
 
-### iPhone / iPad (Safari)
-1. Open the app's address in **Safari**. Other iPhone browsers can't install apps in the same way.
-2. Tap the **Share** button (square with an arrow pointing up).
-3. Scroll down and tap **Add to Home Screen**, then tap **Add**.
+### iPhone / iPad
+This has to be **Safari**. Tap Share, then Add to Home Screen, then Add. The dialog in the app shows the same steps with pictures.
 
-The app now has its own icon on your home screen and opens full screen.
+### Windows
+If the dialog shows **Install**, use that. Otherwise, in Edge open the **⋯** menu, then **Apps**, then **Install this site as an app**. In Chrome, click the install icon at the right end of the address bar.
 
-### Android (Chrome)
-1. Open the app's address in Chrome.
-2. Tap the **Install app** button in the app, or open the Chrome menu (⋮) and choose **Install app** or **Add to Home screen**.
-3. Confirm. The app appears in your app drawer and on your home screen.
+### Android
+In Chrome, open the **⋮** menu and tap **Install app** or **Add to Home screen**.
 
-### Laptop or desktop (Chrome or Edge)
-1. Open the app's address.
-2. Click the **Install app** button in the app. You can also click the install icon at the right end of the address bar.
-3. Confirm. The app opens in its own window and can be pinned to your taskbar or dock.
-
-Safari on a Mac: choose **File → Add to Dock**. Firefox on desktop does not support installing web apps.
+### Mac
+In Chrome or Edge, click the install icon in the address bar. In Safari, choose **File → Add to Dock**. Firefox on a computer does not install web apps.
 
 ## Good to know
 
