@@ -7,7 +7,7 @@ It is plain HTML, CSS and JavaScript. There is nothing to build and nothing to i
 
 | File | What it does |
 | --- | --- |
-| `index.html`, `app.js`, `store.js`, `parser.js`, `styles.css` | The app itself |
+| `index.html`, `app.js`, `store.js`, `sync.js`, `parser.js`, `styles.css` | The app itself |
 | `manifest.webmanifest` | Tells browsers the app's name, colours and icons so it can be installed |
 | `sw.js` | The service worker. It saves the app on your device so it opens offline |
 | `pwa.js` | Registers the service worker, shows the "Install app" button and the iPhone hint |
@@ -64,7 +64,7 @@ Safari on a Mac: choose **File → Add to Dock**. Firefox on desktop does not su
 
 ## Good to know
 
-- Tap a task to edit the title, date, time, and an optional note. A task with a note shows a short preview in the list, and the search box looks through notes too. Notes stay on this device and are included in backups.
-- Your to-dos are stored on the device you use, in the browser's own storage. They are not synced between devices.
+- Tap a task to edit the title, date, time, and an optional note. A task with a note shows a short preview in the list, and the search box looks through notes too. Notes are included in backups, and they travel with the task when sync is on.
+- Your to-dos are stored on this device and the app works offline with no account. Sync in the header is optional: create it once with a long passphrase, then connect other devices with that same passphrase. After that, the session stays on the device until you disconnect it.
 - Clearing your browser data for the site will erase your to-dos.
 - After the first visit the app opens without internet.

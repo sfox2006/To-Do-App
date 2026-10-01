@@ -1,14 +1,16 @@
 // store.js — localStorage persistence with a versioned schema.
 // The storage key stays braindump-todo:v1 so existing browsers keep their data.
-// Shape on disk: { version: 3, tasks: [{id,title,due,time,note,done,createdAt,doneAt}] }
-// v0 was a bare array, v1/v2 were the same tasks without `note`. Missing notes become ''.
+// Shape on disk: { version: 4, tasks: [{id,title,due,time,note,done,createdAt,doneAt,updatedAt}], tombstones: [{id,updatedAt,task}] }
+// v0 was a bare array, v1/v2 had no note, v3 had notes but no updatedAt.
+// Tombstones are local soft-deletes so sync can propagate them. They are not shown in the list.
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 const KEY = 'braindump-todo:v1';
 const DRAFT_KEY = 'braindump-todo:draft';
 const NOTE_MAX = 4000;
 
-let state = { version: SCHEMA_VERSION, tasks: [] };
+let state = { version: SCHEMA_VERSION, tasks: [], tombstones: [] };
+let generation = 0;
 const listeners = new Set();
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -42,16 +44,50 @@ function normalizeTask(t) {
     note: normalizeNote(t.note ?? t.notes),
     done, createdAt,
     doneAt: done ? (Number.isFinite(t.doneAt) ? t.doneAt : createdAt) : null,
+    updatedAt: pickUpdatedAt(t, createdAt),
   };
+}
+
+function normalizeTombstone(t) {
+  if (!t || typeof t !== 'object') return null;
+  const id = typeof t.id === 'string' && t.id ? t.id : (t.task && typeof t.task.id === 'string' ? t.task.id : '');
+  if (!id) return null;
+  const task = t.task ? normalizeTask({ ...t.task, id, updatedAt: pickUpdatedAt(t.task, t.updatedAt) }) : null;
+  const updatedAt = finiteMs(t.updatedAt) || (task ? task.updatedAt : 0);
+  return { id, updatedAt, task };
 }
 
 /** Migrate any stored/imported payload to the current schema. */
 export function migrate(raw) {
   let tasks;
+  let tombs = [];
   if (Array.isArray(raw)) tasks = raw;            // v0: bare array
-  else if (raw && Array.isArray(raw.tasks)) tasks = raw.tasks; // v1/v2/v3
-  else return null;
-  return { version: SCHEMA_VERSION, tasks: tasks.map(normalizeTask).filter(Boolean) };
+  else if (raw && Array.isArray(raw.tasks)) {     // v1–v4
+    tasks = raw.tasks;
+    if (Array.isArray(raw.tombstones)) tombs = raw.tombstones;
+  } else return null;
+  return {
+    version: SCHEMA_VERSION,
+    tasks: tasks.map(normalizeTask).filter(Boolean),
+    tombstones: tombs.map(normalizeTombstone).filter(Boolean),
+  };
+}
+
+function finiteMs(value) {
+  if (Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value) {
+    const ms = Date.parse(value);
+    if (Number.isFinite(ms)) return ms;
+  }
+  return 0;
+}
+
+/** Existing updatedAt wins. Older lists fall back to the later of createdAt and doneAt. */
+function pickUpdatedAt(t, createdAt) {
+  const explicit = finiteMs(t && t.updatedAt);
+  if (explicit) return explicit;
+  const doneAt = finiteMs(t && t.doneAt);
+  return Math.max(finiteMs(createdAt), doneAt);
 }
 
 function persist() {
@@ -59,7 +95,7 @@ function persist() {
   catch (e) { console.warn('Could not save', e); }
 }
 function emit() { listeners.forEach((fn) => fn(state.tasks)); }
-function commit() { persist(); emit(); }
+function commit() { generation++; persist(); emit(); }
 
 export function load() {
   try {
@@ -79,46 +115,103 @@ export function load() {
 
 export function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 export function getTasks() { return state.tasks; }
+export function getGeneration() { return generation; }
+
+export function getSyncSnapshot() {
+  return {
+    tasks: state.tasks.map((t) => ({ ...t })),
+    tombstones: state.tombstones.map((t) => ({ id: t.id, updatedAt: t.updatedAt, task: t.task ? { ...t.task } : null })),
+  };
+}
+
+/** Replace tasks and tombstones exactly, without bumping updatedAt. Used by sync. */
+export function applySyncSnapshot({ tasks, tombstones }) {
+  state = {
+    version: SCHEMA_VERSION,
+    tasks: (tasks || []).map(normalizeTask).filter(Boolean),
+    tombstones: (tombstones || []).map(normalizeTombstone).filter(Boolean),
+  };
+  commit();
+}
+
+/** Drop tombstones older than cutoff (ms). Local only; call after a successful push. */
+export function purgeOldTombstones(cutoff) {
+  const next = state.tombstones.filter((t) => t.updatedAt >= cutoff);
+  if (next.length === state.tombstones.length) return;
+  state = { ...state, tombstones: next };
+  commit();
+}
 
 /** Add parsed tasks [{title,due,time}]; returns the created tasks. */
 export function addTasks(items) {
   const now = Date.now();
   const created = items
-    .map((it, i) => normalizeTask({ ...it, id: uid(), done: false, createdAt: now + i }))
+    .map((it, i) => normalizeTask({ ...it, id: uid(), done: false, createdAt: now + i, updatedAt: now + i }))
     .filter(Boolean);
-  if (created.length) { state.tasks = [...state.tasks, ...created]; commit(); }
+  if (created.length) {
+    const ids = new Set(created.map((t) => t.id));
+    state.tombstones = state.tombstones.filter((t) => !ids.has(t.id));
+    state.tasks = [...state.tasks, ...created];
+    commit();
+  }
   return created;
 }
 
 export function updateTask(id, patch) {
+  let changed = false;
   state.tasks = state.tasks.map((t) => {
     if (t.id !== id) return t;
-    const merged = { ...t, ...patch };
+    changed = true;
+    const merged = { ...t, ...patch, updatedAt: Date.now() };
     if ('done' in patch) merged.doneAt = patch.done ? Date.now() : null;
     return normalizeTask(merged) || t;
   });
-  commit();
+  if (changed) commit();
 }
 
 export function removeTasks(ids) {
   const set = new Set(ids);
   const removed = state.tasks.filter((t) => set.has(t.id));
+  if (!removed.length) return removed;
+  const now = Date.now();
+  const tombs = new Map(state.tombstones.map((t) => [t.id, t]));
+  for (const t of removed) tombs.set(t.id, { id: t.id, updatedAt: now, task: { ...t, updatedAt: now } });
   state.tasks = state.tasks.filter((t) => !set.has(t.id));
-  if (removed.length) commit();
+  state.tombstones = [...tombs.values()];
+  commit();
   return removed;
 }
 
 /** Re-insert previously removed tasks (undo). */
 export function restoreTasks(tasks) {
+  const now = Date.now();
   const have = new Set(state.tasks.map((t) => t.id));
-  const back = (Array.isArray(tasks) ? tasks : []).map(normalizeTask).filter(Boolean).filter((t) => !have.has(t.id));
-  if (back.length) { state.tasks = [...state.tasks, ...back]; commit(); }
+  const back = (Array.isArray(tasks) ? tasks : [])
+    .map((t) => normalizeTask({ ...t, updatedAt: now }))
+    .filter(Boolean)
+    .filter((t) => !have.has(t.id));
+  if (!back.length) return;
+  const ids = new Set(back.map((t) => t.id));
+  state.tombstones = state.tombstones.filter((t) => !ids.has(t.id));
+  state.tasks = [...state.tasks, ...back];
+  commit();
 }
 
 export function clearCompleted() { return removeTasks(state.tasks.filter((t) => t.done).map((t) => t.id)); }
 
 export function snapshot() { return JSON.parse(JSON.stringify(state.tasks)); }
-export function replaceAll(tasks) { state.tasks = tasks.map(normalizeTask).filter(Boolean); commit(); }
+export function replaceAll(tasks) {
+  const now = Date.now();
+  const next = (tasks || []).map((t) => normalizeTask({ ...t, updatedAt: now })).filter(Boolean);
+  const nextIds = new Set(next.map((t) => t.id));
+  const tombs = new Map(state.tombstones.map((t) => [t.id, t]));
+  for (const t of state.tasks) {
+    if (!nextIds.has(t.id)) tombs.set(t.id, { id: t.id, updatedAt: now, task: { ...t, updatedAt: now } });
+  }
+  for (const id of nextIds) tombs.delete(id);
+  state = { version: SCHEMA_VERSION, tasks: next, tombstones: [...tombs.values()] };
+  commit();
+}
 
 export function exportJSON() {
   return JSON.stringify({ app: 'braindump-todo', version: SCHEMA_VERSION, exportedAt: new Date().toISOString(), tasks: state.tasks }, null, 2);
@@ -137,22 +230,31 @@ export function importJSON(text) {
   if (!data) throw new Error('That file does not look like a backup.');
   const byId = new Map(state.tasks.map((t) => [t.id, t]));
   let next = state.tasks.slice();
+  const tombs = new Map(state.tombstones.map((t) => [t.id, t]));
   let added = 0;
   let merged = 0;
+  const now = Date.now();
   for (const t of data.tasks) {
     const cur = byId.get(t.id);
     if (!cur) {
-      next.push(t);
-      byId.set(t.id, t);
+      const stamped = normalizeTask({ ...t, updatedAt: now + added });
+      if (!stamped) continue;
+      next.push(stamped);
+      byId.set(t.id, stamped);
+      tombs.delete(t.id);
       added++;
     } else if (t.note && !cur.note) {
-      const updated = normalizeTask({ ...cur, note: t.note }) || cur;
+      const updated = normalizeTask({ ...cur, note: t.note, updatedAt: now }) || cur;
       next = next.map((x) => (x.id === cur.id ? updated : x));
       byId.set(cur.id, updated);
       merged++;
     }
   }
-  if (added || merged) { state.tasks = next; commit(); }
+  if (added || merged) {
+    state.tasks = next;
+    state.tombstones = [...tombs.values()];
+    commit();
+  }
   return { added, merged };
 }
 

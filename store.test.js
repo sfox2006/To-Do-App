@@ -21,7 +21,7 @@ test.beforeEach(() => {
 
 test('migrate turns a v0 array and a v2 backup into notes-capable tasks', () => {
   const v0 = store.migrate([{ id: 'a', title: 'Old task', createdAt: 1 }]);
-  assert.equal(v0.version, 3);
+  assert.equal(v0.version, 4);
   assert.equal(v0.tasks[0].note, '');
   assert.equal(v0.tasks[0].title, 'Old task');
 
@@ -30,7 +30,7 @@ test('migrate turns a v0 array and a v2 backup into notes-capable tasks', () => 
     tasks: [{ id: 'b', text: '  call mum ', due: '2026-10-02', time: '09:30', done: false, createdAt: 2 }],
   });
   assert.deepEqual(v2.tasks[0], {
-    id: 'b', title: 'call mum', due: '2026-10-02', time: '09:30', note: '', done: false, createdAt: 2, doneAt: null,
+    id: 'b', title: 'call mum', due: '2026-10-02', time: '09:30', note: '', done: false, createdAt: 2, doneAt: null, updatedAt: 2,
   });
   assert.equal(store.migrate({ nope: true }), null);
 });
@@ -65,8 +65,9 @@ test('load migrates an existing v2 list in place and keeps the storage key', () 
   assert.equal(tasks.length, 1);
   assert.equal(tasks[0].note, '');
   assert.equal(tasks[0].doneAt, 6);
+  assert.equal(tasks[0].updatedAt, 6);
   const saved = JSON.parse(localStorage.getItem(KEY));
-  assert.equal(saved.version, 3);
+  assert.equal(saved.version, 4);
   assert.equal(saved.tasks[0].note, '');
   assert.equal(saved.tasks[0].title, 'Legacy');
 });
@@ -83,7 +84,7 @@ test('updating a title keeps the note, and export/import round-trips it', () => 
   assert.equal(cur.time, '09:00');
 
   const exported = JSON.parse(store.exportJSON());
-  assert.equal(exported.version, 3);
+  assert.equal(exported.version, 4);
   assert.equal(exported.app, 'braindump-todo');
   assert.equal(exported.tasks[0].note, 'oat milk\nfrom the corner');
 
@@ -135,6 +136,8 @@ test('undo restore keeps the note', () => {
   store.updateTask(t.id, { note: 'remember this' });
   const removed = store.removeTasks([t.id]);
   assert.equal(store.getTasks().length, 0);
+  assert.equal(store.getSyncSnapshot().tombstones.some((tomb) => tomb.id === t.id), true);
   store.restoreTasks(removed);
   assert.equal(store.getTasks()[0].note, 'remember this');
+  assert.equal(store.getSyncSnapshot().tombstones.some((tomb) => tomb.id === t.id), false);
 });

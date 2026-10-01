@@ -1,5 +1,6 @@
 import { parseTasks, bucketFor } from './parser.js';
 import * as store from './store.js';
+import { createSync, loadSupabaseClient, deriveCredentials, explainAuthError } from './sync.js';
 
 const $ = (s) => document.querySelector(s);
 const dumpEl = $('#dump'), formEl = $('#dump-form'), listsEl = $('#lists');
@@ -463,7 +464,13 @@ fileEl.addEventListener('change', async () => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if ($('#editor').open) return;
+  if ($('#editor').open || $('#sync-dialog').open) return;
+  if (!$('#account-menu').hidden && e.key === 'Escape') {
+    $('#account-menu').hidden = true;
+    $('#account-btn').setAttribute('aria-expanded', 'false');
+    $('#account-btn').focus();
+    return;
+  }
   const tag = (e.target.tagName || '').toLowerCase();
   const typing = tag === 'input' || tag === 'textarea' || e.target.isContentEditable;
   if (e.key === 'Escape' && !typing) { hideToast(); return; }
@@ -482,3 +489,150 @@ store.load();
 dumpEl.value = store.getDraft();
 updateCount();
 render();
+setupSync();
+
+/* ---------- optional sync (local list always works without it) ---------- */
+function setupSync() {
+  const btn = $('#account-btn');
+  const label = $('#account-label');
+  const dot = $('#sync-dot');
+  const menu = $('#account-menu');
+  const menuStatus = $('#account-menu-status');
+  const live = $('#sync-live');
+  const dlg = $('#sync-dialog');
+  const msg = $('#sync-msg');
+  const phrase = $('#passphrase');
+  const phrase2 = $('#passphrase2');
+  let client = null;
+  let engine = null;
+  let signedIn = false;
+  let busy = false;
+
+  const labels = {
+    off: 'Sync',
+    synced: 'Synced',
+    syncing: 'Syncing',
+    offline: 'Offline',
+    error: 'Sync problem',
+  };
+  const liveText = {
+    off: '',
+    synced: 'Synced',
+    syncing: 'Syncing',
+    offline: 'Offline. Tasks stay on this device.',
+    error: 'Sync problem. Tasks stay on this device and will retry.',
+  };
+
+  function closeMenu() {
+    menu.hidden = true;
+    btn.setAttribute('aria-expanded', 'false');
+  }
+  function showMsg(text, info) {
+    msg.hidden = !text;
+    msg.textContent = text || '';
+    msg.classList.toggle('info', !!info);
+  }
+  function closeDialog() {
+    phrase.value = '';
+    phrase2.value = '';
+    showMsg('');
+    if (dlg.open) dlg.close();
+    btn.focus();
+  }
+  function onStatus(state) {
+    signedIn = state !== 'off';
+    label.textContent = labels[state] || labels.off;
+    dot.dataset.state = state;
+    menuStatus.textContent = liveText[state] || labels[state] || '';
+    live.textContent = liveText[state] || '';
+    btn.setAttribute('aria-haspopup', signedIn ? 'menu' : 'dialog');
+    btn.setAttribute('aria-controls', signedIn ? 'account-menu' : 'sync-dialog');
+    if (!signedIn) closeMenu();
+  }
+
+  btn.addEventListener('click', () => {
+    if (signedIn) {
+      const open = menu.hidden;
+      menu.hidden = !open;
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open) $('#disconnect').focus();
+      return;
+    }
+    closeMenu();
+    if (!dlg.open) dlg.showModal();
+    if (!client) showMsg('Sync needs a connection the first time on this device. Your tasks still work offline.', true);
+    phrase.focus();
+  });
+  document.addEventListener('click', (e) => {
+    if (menu.hidden) return;
+    if (!btn.contains(e.target) && !menu.contains(e.target)) closeMenu();
+  });
+  $('#disconnect').addEventListener('click', async () => {
+    closeMenu();
+    try { if (client) await client.auth.signOut({ scope: 'local' }); }
+    catch (err) { console.warn(err); }
+    if (engine) engine.stopSession();
+    else onStatus('off');
+  });
+
+  dlg.addEventListener('cancel', (e) => { e.preventDefault(); closeDialog(); });
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) closeDialog(); });
+  $('#sync-cancel').addEventListener('click', () => closeDialog());
+  $('#sync-form').addEventListener('submit', (e) => e.preventDefault());
+  $('#show-passphrase').addEventListener('change', (e) => {
+    const type = e.target.checked ? 'text' : 'password';
+    phrase.type = type;
+    phrase2.type = type;
+  });
+
+  function setBusy(on) {
+    busy = on;
+    $('#sync-create').disabled = on;
+    $('#sync-connect').disabled = on;
+  }
+  async function run(intent) {
+    if (busy) return;
+    if (!client || !engine) {
+      showMsg('Sync needs a connection the first time on this device. Your tasks still work offline.', true);
+      return;
+    }
+    const value = phrase.value;
+    if (value.length < 12) { showMsg('Use at least 12 characters. Four or more random words is best.'); return; }
+    if (intent === 'signup' && value !== phrase2.value) { showMsg('The two passphrases do not match.'); return; }
+    setBusy(true);
+    showMsg('Setting up sync…', true);
+    try {
+      const creds = await deriveCredentials(value);
+      const auth = intent === 'signup'
+        ? await client.auth.signUp({ email: creds.email, password: creds.password })
+        : await client.auth.signInWithPassword({ email: creds.email, password: creds.password });
+      const session = auth.data && auth.data.session;
+      if (auth.error || !session) {
+        showMsg(explainAuthError(auth.error, { intent, session }));
+        return;
+      }
+      closeDialog();
+      await engine.useSession(session);
+    } catch (err) {
+      showMsg(err && err.code === 'short' ? err.message : explainAuthError(err, { intent }));
+    } finally {
+      setBusy(false);
+    }
+  }
+  $('#sync-create').addEventListener('click', () => run('signup'));
+  $('#sync-connect').addEventListener('click', () => run('signin'));
+
+  onStatus('off');
+  loadSupabaseClient().then(async (supabase) => {
+    client = supabase;
+    engine = createSync(store, client, { onStatus });
+    try {
+      const { data, error } = await client.auth.getSession();
+      if (!error && data.session) await engine.useSession(data.session);
+    } catch (err) {
+      console.warn(err);
+    }
+  }).catch((err) => {
+    console.warn('Sync library unavailable', err && err.message ? err.message : err);
+  });
+}

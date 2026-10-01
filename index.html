@@ -24,9 +24,24 @@
   <a class="skip" href="#dump">Skip to brain dump</a>
 
   <header class="top">
-    <h1>Brain Dump</h1>
-    <p class="tag">Type or dictate everything. We'll sort it out.</p>
+    <div class="top-bar">
+      <div>
+        <h1>Brain Dump</h1>
+        <p class="tag">Type or dictate everything. We'll sort it out.</p>
+      </div>
+      <div class="account">
+        <button type="button" id="account-btn" class="account-btn" aria-haspopup="dialog" aria-controls="sync-dialog" aria-expanded="false">
+          <span id="sync-dot" class="sync-dot" data-state="off" aria-hidden="true"></span>
+          <span id="account-label">Sync</span>
+        </button>
+        <div id="account-menu" class="account-menu" role="menu" hidden>
+          <p id="account-menu-status" class="account-menu-status">Not syncing</p>
+          <button type="button" id="disconnect" role="menuitem">Disconnect this device</button>
+        </div>
+      </div>
+    </div>
   </header>
+  <p id="sync-live" class="sr-only" aria-live="polite"></p>
 
   <main>
     <form id="dump-form" class="dump" autocomplete="off">
@@ -69,7 +84,7 @@
       <input id="import-file" type="file" accept="application/json,.json" hidden>
     </div>
     <p class="shortcuts"><kbd>Ctrl/⌘</kbd>+<kbd>Enter</kbd> add · <kbd>/</kbd> search · <kbd>N</kbd> new dump · <kbd>Esc</kbd> cancel</p>
-    <p class="shortcuts">Swipe a task right to complete, left to delete. Data stays on this device.</p>
+    <p class="shortcuts">Swipe a task right to complete, left to delete. Tasks stay on this device until you turn on Sync.</p>
     <p class="shortcuts">Tap a task to edit it or add a note. Tap the date for a quick in-list edit.</p>
   </footer>
 
@@ -96,6 +111,26 @@
         <button type="button" id="editor-nodate">No date</button>
       </div>
       <button type="button" id="editor-delete" class="editor-delete">Delete task</button>
+    </form>
+  </dialog>
+
+  <dialog id="sync-dialog" class="sync-dialog" aria-labelledby="sync-heading" aria-describedby="sync-hint">
+    <form id="sync-form" class="sync-panel">
+      <h2 id="sync-heading">Sync this device</h2>
+      <p id="sync-hint" class="hint">Use one long passphrase on every device. At least 12 characters — four or more random words is best. It is the only protection for your synced tasks, and it cannot be reset or recovered.</p>
+      <label for="passphrase">Passphrase
+        <input id="passphrase" type="password" minlength="12" autocomplete="current-password" spellcheck="false">
+      </label>
+      <label for="passphrase2">Repeat passphrase <span class="hint">(Create sync only)</span>
+        <input id="passphrase2" type="password" autocomplete="new-password" spellcheck="false">
+      </label>
+      <label class="show-pass" for="show-passphrase"><input id="show-passphrase" type="checkbox"> Show passphrase</label>
+      <p id="sync-msg" class="sync-msg" role="alert" hidden></p>
+      <div class="sync-actions">
+        <button type="button" id="sync-create" class="save">Create sync</button>
+        <button type="button" id="sync-connect">Connect</button>
+        <button type="button" id="sync-cancel">Cancel</button>
+      </div>
     </form>
   </dialog>
 
