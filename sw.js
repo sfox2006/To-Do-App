@@ -1,6 +1,6 @@
 /* Service worker: offline-first app shell + stale-while-revalidate.
    Bump VERSION whenever you want every client to re-download the shell. */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = `todo-app-${VERSION}`;
 
 // Relative URLs resolve against the SW location, so this works from any subpath.

@@ -46,8 +46,8 @@
     </form>
 
     <div class="search" role="search">
-      <label for="search" class="sr-only">Search tasks</label>
-      <input id="search" type="search" placeholder="Search tasks…  ( / )" autocomplete="off">
+      <label for="search" class="sr-only">Search tasks and notes</label>
+      <input id="search" type="search" placeholder="Search tasks and notes…  ( / )" autocomplete="off">
       <p id="search-status" class="sr-only" aria-live="polite"></p>
     </div>
 
@@ -70,7 +70,34 @@
     </div>
     <p class="shortcuts"><kbd>Ctrl/⌘</kbd>+<kbd>Enter</kbd> add · <kbd>/</kbd> search · <kbd>N</kbd> new dump · <kbd>Esc</kbd> cancel</p>
     <p class="shortcuts">Swipe a task right to complete, left to delete. Data stays on this device.</p>
+    <p class="shortcuts">Tap a task to edit it or add a note. Tap the date for a quick in-list edit.</p>
   </footer>
+
+  <dialog id="editor" class="editor" aria-labelledby="editor-heading" aria-describedby="editor-hint">
+    <form id="editor-form" class="editor-panel">
+      <div class="editor-handle" aria-hidden="true"></div>
+      <h2 id="editor-heading">Edit task</h2>
+      <p id="editor-hint" class="sr-only">Change the title, date, time, and note. Press Escape to cancel.</p>
+      <label for="editor-task-title">Title</label>
+      <input id="editor-task-title" type="text" maxlength="500" autocomplete="off" spellcheck="true" enterkeyhint="done" required>
+      <div class="editor-when">
+        <label for="editor-date">Date
+          <input id="editor-date" type="date">
+        </label>
+        <label for="editor-time">Time (optional)
+          <input id="editor-time" type="time">
+        </label>
+      </div>
+      <label for="editor-note">Note</label>
+      <textarea id="editor-note" rows="5" maxlength="4000" placeholder="Add a note…" spellcheck="true"></textarea>
+      <div class="editor-actions">
+        <button type="submit" class="save" id="editor-save">Save</button>
+        <button type="button" id="editor-cancel">Cancel</button>
+        <button type="button" id="editor-nodate">No date</button>
+      </div>
+      <button type="button" id="editor-delete" class="editor-delete">Delete task</button>
+    </form>
+  </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite" hidden>
     <span id="toast-msg"></span>

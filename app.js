@@ -12,7 +12,8 @@ const GROUPS = [
 ];
 
 let query = '';
-let editing = null;          // { id, focus: 'title'|'date' }
+let editing = null;          // { id, focus: 'title'|'date' } quick in-list edit
+let editor = null;           // { id } full edit sheet/modal
 let newIds = new Set();      // recently added -> highlight
 const pending = new Set();   // ids mid-animation
 
@@ -67,14 +68,23 @@ function toast(msg, actionLabel, action, ms = 6000) {
 function hideToast() { clearTimeout(toastTimer); toastEl.hidden = true; }
 
 /* ---------- rendering ---------- */
+function noteLine(note) { return String(note || '').replace(/\s+/g, ' ').trim(); }
 function matches(t) {
   if (!query) return true;
   const q = query.toLowerCase();
-  return t.title.toLowerCase().includes(q) || (t.due && (t.due.includes(q) || fmtWhen(t).toLowerCase().includes(q)));
+  const note = (t.note || '').toLowerCase();
+  return t.title.toLowerCase().includes(q)
+    || (note && (note.includes(q) || note.replace(/\s+/g, ' ').includes(q)))
+    || (t.due && (t.due.includes(q) || fmtWhen(t).toLowerCase().includes(q)));
 }
 
 function render() {
   const all = store.getTasks();
+  if (editor && !all.some((t) => t.id === editor.id)) {
+    editor = null;
+    const dlg = $('#editor');
+    if (dlg && dlg.open) dlg.close();
+  }
   const visible = all.filter(matches);
   const open = visible.filter((t) => !t.done);
   const done = visible.filter((t) => t.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
@@ -107,7 +117,7 @@ function render() {
   $('#search-status').textContent = query ? `${plural(visible.length, 'task')} found` : '';
 
   newIds = new Set();
-  if (editing) {
+  if (editing && !($('#editor') && $('#editor').open)) {
     const f = document.querySelector(editing.focus === 'date' ? '.edit input[type=date]' : '.edit input[type=text]');
     if (f) { f.focus(); if (f.select && f.type === 'text') f.select(); }
   }
@@ -132,15 +142,57 @@ function taskRow(t) {
   const body = el('div', { class: 'task-body' },
     el('label', { class: 'check' }, cb),
     el('div', { class: 'main' },
-      el('button', { type: 'button', class: 'title', 'aria-label': `Edit task: ${t.title}`, onclick: () => startEdit(t.id, 'title') },
-        el('span', { class: 'title-text', text: t.title })),
-      when),
+      el('button', {
+        type: 'button', class: 'title', 'aria-label': `Edit task: ${t.title}`, 'aria-haspopup': 'dialog',
+        onclick: (e) => {
+          // Shift/Alt keeps the quick in-list title editor. A plain tap opens the full editor.
+          if (e.shiftKey || e.altKey) startEdit(t.id, 'title');
+          else openEditor(t.id, 'title');
+        },
+      }, el('span', { class: 'title-text', text: t.title })),
+      when,
+      notePreview(t)),
     el('button', { type: 'button', class: 'del', 'aria-label': `Delete: ${t.title}`, title: 'Delete', text: '✕', onclick: () => remove(t.id, li) }));
   const li = el('li', { class: cls.join(' '), 'data-id': t.id },
     el('div', { class: 'swipe-bg', 'aria-hidden': 'true' }, el('span', { class: 'l', text: t.done ? '↺ Undo done' : '✓ Done' }), el('span', { class: 'r', text: 'Delete 🗑' })),
     body);
   attachSwipe(li, body, t);
   return li;
+}
+
+function glyph(paths) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', '16');
+  svg.setAttribute('height', '16');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('class', 'glyph');
+  for (const d of paths) {
+    const p = document.createElementNS(ns, 'path');
+    p.setAttribute('d', d);
+    p.setAttribute('fill', 'none');
+    p.setAttribute('stroke', 'currentColor');
+    p.setAttribute('stroke-width', '1.8');
+    p.setAttribute('stroke-linecap', 'round');
+    p.setAttribute('stroke-linejoin', 'round');
+    svg.append(p);
+  }
+  return svg;
+}
+function notePreview(t) {
+  if (!t.note) return null;
+  const line = noteLine(t.note);
+  return el('button', {
+    type: 'button', class: 'note-preview', 'aria-haspopup': 'dialog',
+    'aria-label': `Note: ${line.slice(0, 180)}. Edit task`,
+    onclick: () => openEditor(t.id, 'note'),
+  }, glyph([
+    'M6 3.5h8.2L19.5 8.8V20a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 20V5A1.5 1.5 0 0 1 6 3.5z',
+    'M14.2 3.8V9H19.2',
+    'M8 12.2h8',
+    'M8 16h5.5',
+  ]), el('span', { class: 'note-text', text: line }));
 }
 
 function editRow(t) {
@@ -169,8 +221,105 @@ function editRow(t) {
   return el('li', { class: 'task editing', 'data-id': t.id }, form);
 }
 
+/* ---------- full editor (bottom sheet on a phone, dialog on a laptop) ---------- */
+function editorFields() {
+  return {
+    title: $('#editor-task-title'),
+    date: $('#editor-date'),
+    time: $('#editor-time'),
+    note: $('#editor-note'),
+  };
+}
+function focusables(dlg) {
+  return [...dlg.querySelectorAll('button, input, textarea')].filter((n) => !n.disabled);
+}
+function openEditor(id, focus = 'title') {
+  const t = store.getTasks().find((x) => x.id === id);
+  if (!t) return;
+  editing = null;
+  editor = { id };
+  const f = editorFields();
+  f.title.value = t.title;
+  f.date.value = t.due || '';
+  f.time.value = t.time || '';
+  f.time.disabled = !t.due;
+  f.note.value = t.note || '';
+  render();
+  const dlg = $('#editor');
+  if (!dlg.open) dlg.showModal();
+  const field = focus === 'note' ? f.note : f.title;
+  field.focus();
+  if (focus !== 'note' && field.select) field.select();
+}
+function closeEditor() {
+  const id = editor && editor.id;
+  editor = null;
+  const dlg = $('#editor');
+  if (dlg.open) dlg.close();
+  if (!id) return;
+  const back = document.querySelector(`[data-id="${CSS.escape(id)}"] .title`);
+  if (back) back.focus();
+}
+function saveEditor() {
+  if (!editor) return;
+  const f = editorFields();
+  const title = f.title.value.trim();
+  if (!title) { f.title.focus(); return; }
+  const id = editor.id;
+  const due = f.date.value || null;
+  const time = due ? (f.time.value || null) : null;
+  const note = f.note.value;
+  editor = null;
+  const dlg = $('#editor');
+  if (dlg.open) dlg.close();
+  store.updateTask(id, { title, due, time, note });
+  const back = document.querySelector(`[data-id="${CSS.escape(id)}"] .title`);
+  if (back) back.focus();
+}
+function deleteFromEditor() {
+  if (!editor) return;
+  const id = editor.id;
+  const li = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
+  editor = null;
+  const dlg = $('#editor');
+  if (dlg.open) dlg.close();
+  remove(id, li);
+}
+function setupEditor() {
+  const dlg = $('#editor');
+  const f = editorFields();
+  f.date.addEventListener('input', () => {
+    f.time.disabled = !f.date.value;
+    if (!f.date.value) f.time.value = '';
+  });
+  $('#editor-form').addEventListener('submit', (e) => { e.preventDefault(); saveEditor(); });
+  $('#editor-cancel').addEventListener('click', () => closeEditor());
+  $('#editor-nodate').addEventListener('click', () => {
+    f.date.value = '';
+    f.time.value = '';
+    f.time.disabled = true;
+    f.date.focus();
+  });
+  $('#editor-delete').addEventListener('click', () => deleteFromEditor());
+  dlg.addEventListener('cancel', (e) => { e.preventDefault(); closeEditor(); });
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) closeEditor(); });
+  dlg.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); saveEditor(); return; }
+    if (e.key !== 'Tab') return;
+    const nodes = focusables(dlg);
+    if (!nodes.length) return;
+    const first = nodes[0], last = nodes[nodes.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+}
+
 /* ---------- actions ---------- */
-function startEdit(id, focus) { editing = { id, focus }; render(); }
+function startEdit(id, focus) {
+  if ($('#editor').open) return;
+  editing = { id, focus };
+  render();
+}
 
 function toggle(id, checked, li) {
   if (pending.has(id)) return;
@@ -222,7 +371,7 @@ function attachSwipe(li, body, t) {
   let sx = 0, sy = 0, dx = 0, id = null, locked = false, swallow = false;
   const THRESH = 90;
   body.addEventListener('pointerdown', (e) => {
-    if (e.pointerType === 'mouse' || e.button > 0 || editing) return;
+    if (e.pointerType === 'mouse' || e.button > 0 || editing || editor) return;
     id = e.pointerId; sx = e.clientX; sy = e.clientY; dx = 0; locked = false;
   });
   body.addEventListener('pointermove', (e) => {
@@ -303,12 +452,18 @@ fileEl.addEventListener('change', async () => {
   if (!f) return;
   const before = store.snapshot();
   try {
-    const n = store.importJSON(await f.text());
-    toast(n ? `Imported ${plural(n, 'task')}` : 'Nothing new to import', n ? 'Undo' : '', n ? () => store.replaceAll(before) : null);
+    const { added, merged } = store.importJSON(await f.text());
+    const n = added + merged;
+    let msg = 'Nothing new to import';
+    if (added && merged) msg = `Imported ${plural(added, 'task')} and updated ${plural(merged, 'note')}`;
+    else if (merged) msg = `Updated ${plural(merged, 'note')}`;
+    else if (added) msg = `Imported ${plural(added, 'task')}`;
+    toast(msg, n ? 'Undo' : '', n ? () => store.replaceAll(before) : null);
   } catch (err) { toast(err.message); }
 });
 
 document.addEventListener('keydown', (e) => {
+  if ($('#editor').open) return;
   const tag = (e.target.tagName || '').toLowerCase();
   const typing = tag === 'input' || tag === 'textarea' || e.target.isContentEditable;
   if (e.key === 'Escape' && !typing) { hideToast(); return; }
@@ -319,9 +474,10 @@ document.addEventListener('keydown', (e) => {
 });
 
 store.subscribe(render);
-document.addEventListener('visibilitychange', () => { if (!document.hidden && !editing) render(); });
-setInterval(() => { if (!document.hidden && !editing && !pending.size) render(); }, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !editing && !editor) render(); });
+setInterval(() => { if (!document.hidden && !editing && !editor && !pending.size) render(); }, 60000);
 
+setupEditor();
 store.load();
 dumpEl.value = store.getDraft();
 updateCount();

@@ -64,6 +64,7 @@ Safari on a Mac: choose **File → Add to Dock**. Firefox on desktop does not su
 
 ## Good to know
 
+- Tap a task to edit the title, date, time, and an optional note. A task with a note shows a short preview in the list, and the search box looks through notes too. Notes stay on this device and are included in backups.
 - Your to-dos are stored on the device you use, in the browser's own storage. They are not synced between devices.
 - Clearing your browser data for the site will erase your to-dos.
 - After the first visit the app opens without internet.
