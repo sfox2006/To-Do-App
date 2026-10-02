@@ -43,6 +43,15 @@ Installed copies are kept on the device. When you change files, edit `VERSION` a
 
 Open the online address and tap **Download app** in the header. In Chrome, Edge, and Android that opens the browser’s own install prompt. There is no app store. On iPhone or iPad, Safari has no install prompt: the button shows a one-line hint, Share then Add to Home Screen. If the header already says **Already installed**, you are done.
 
+## How dates are read
+
+Weeks run Monday to Sunday.
+
+- **Wednesday**, **this Wednesday**, **on Wednesday**, and **by Wednesday** mean the next time that weekday comes. If today is that weekday, they mean today.
+- **Next Wednesday** means the Wednesday of next week. The word "next" stays with the weekday, so this does not turn into Monday. From Friday 2 October 2026, next Wednesday is **Wednesday 7 October 2026** (the week of Monday 5 October through Sunday 11 October). Wednesday 14 October is the week after that.
+- **Next week** on its own means Monday of next week, on purpose. **Next week on Wednesday** means that Wednesday, not Monday.
+- Short names such as wed, thurs, and tues need a word like next, this, on, or by.
+
 ## Good to know
 
 - Tap a task to edit the title, date, time, and an optional note. A task with a note shows a short preview in the list, and the search box looks through notes too. Notes are included in backups, and they travel with the task when sync is on.

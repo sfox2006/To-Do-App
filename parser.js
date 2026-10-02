@@ -7,6 +7,17 @@
 // "Today" is taken from the *local* calendar fields of `now` (the user is in
 // America/New_York, so the browser's local time is the right clock). Weeks run
 // Monday–Sunday. Numeric dates are US month/day.
+//
+// Weekdays:
+//   "Wednesday", "this Wednesday", "on Wednesday", "by Wednesday"
+//       the upcoming one. Today counts when today is that weekday.
+//   "next Wednesday" (also "next wed", "by next Wednesday")
+//       that weekday in the next Mon–Sun week, not "next week".
+//       "next" is never thrown away so the date can fall back to Monday.
+//       Friday 2 Oct 2026 → Wednesday 7 Oct 2026 (week of Mon 5–Sun 11 Oct).
+//       Wednesday 14 Oct is the week after that.
+//   "next week" with no weekday → Monday of next week, on purpose.
+//   "next week" plus a weekday ("next week on Wednesday") → that weekday.
 
 const DAY_MS = 86400000;
 
@@ -77,6 +88,9 @@ const monthIndex = (s) => MONTHS[s.slice(0, 3).toLowerCase()];
 
 const WEEKDAY_FULL = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 const WEEKDAY_FULL_RE = WEEKDAY_FULL.join('|');
+// Short names need a lead word ("next wed", "by thu") so "sat down" is not a date.
+const WEEKDAY_ABBR_RE = 'mon|tues|tue|wed|thurs|thur|thu|fri|sat|sun';
+const WEEKDAY_ANY_RE = `${WEEKDAY_FULL_RE}|${WEEKDAY_ABBR_RE}`;
 // Mon=0 … Sun=6
 const weekdayIndex = (s) => {
   const p = s.slice(0, 3).toLowerCase();
@@ -255,7 +269,18 @@ const RULES = [
     },
   },
   {
-    // next week -> Monday of next week; next month -> 1st of next month
+    // "next week on Wednesday" / "Wednesday next week" / "by next week wed".
+    // The weekday wins. This stays above the plain "next week" rule so "next"
+    // is not consumed and the date does not fall back to Monday.
+    re: new RegExp(
+      `${LEAD}\\b(?:next\\s+week(?:\\s*,)?(?:\\s+on)?\\s+(${WEEKDAY_ANY_RE})|(${WEEKDAY_ANY_RE})\\s*,?\\s*next\\s+week)\\b${TOD}`,
+      'gi'
+    ),
+    fn: (m, { today }) => weekdayDate(today, m[1] || m[2], 'next', m[3]),
+  },
+  {
+    // next week -> Monday of next week; next month -> 1st of next month.
+    // Only the word "week"/"month". "next Wednesday" does not match here.
     re: new RegExp(`${LEAD}\\bnext\\s+(week|month)\\b`, 'gi'),
     fn: (m, { today }) => {
       if (m[1].toLowerCase() === 'week') return { date: addDays(mondayOf(today), 7) };
@@ -281,7 +306,7 @@ const RULES = [
   },
   {
     // abbreviated weekdays only with a clear lead word: "on fri", "next tue", "by thu"
-    re: /\b(?:(this|next|last)\s+|(?:due|on|by|before|until|till)\s+)(mon|tues|tue|wed|thurs|thur|thu|fri|sat|sun)\b\.?/gi,
+    re: new RegExp(`\\b(?:(this|next|last)\\s+|(?:due|on|by|before|until|till)\\s+)(${WEEKDAY_ABBR_RE})\\b\\.?`, 'gi'),
     fn: (m, { today }) => weekdayDate(today, m[2], (m[1] || '').toLowerCase(), null),
   },
 ];
@@ -300,8 +325,8 @@ function weekdayDate(today, name, mode, tod) {
   if (target < 0) return null;
   let date;
   if (mode === 'last') date = addDays(today, -(((mondayIdx(today) - target + 6) % 7) + 1)); // most recent past one
-  else if (mode === 'next') date = addDays(mondayOf(today), 7 + target); // that weekday in next Mon–Sun week
-  else date = addDays(today, (target - mondayIdx(today) + 7) % 7); // upcoming; today if same day
+  else if (mode === 'next') date = addDays(mondayOf(today), 7 + target); // that weekday in the next Mon–Sun week
+  else date = addDays(today, (target - mondayIdx(today) + 7) % 7); // upcoming; today if same day (bare/this/on/by)
   return { date, pm: pmWord(tod) };
 }
 

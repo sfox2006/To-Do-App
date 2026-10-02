@@ -281,3 +281,60 @@ test('older month/day (not this month, >14 days ago) still rolls to next year', 
 
 test('early January: a late-December date is last year (overdue)', () =>
   assert.equal(one('x Dec 28', new Date(2027, 0, 5)).due, '2026-12-28'));
+
+/* ───────── Friday 2 Oct 2026: "next <weekday>" is that day in the next Mon–Sun week ───────── */
+// Today Fri 2 Oct. This week is Mon 28 Sep–Sun 4 Oct. Next week is Mon 5–Sun 11 Oct.
+// "next Wednesday" is Wed 7 Oct, not Mon 5 Oct and not Wed 14 Oct.
+const FRI = new Date(2026, 9, 2, 12, 0, 0);
+
+test('next Wednesday from Fri 2 Oct 2026 is Wed 7 Oct, not Monday', () => {
+  assert.equal(one('do X by next Wednesday', FRI).due, '2026-10-07');
+  assert.notEqual(one('do X by next Wednesday', FRI).due, '2026-10-05');
+  assert.equal(one('finish report by next Wednesday', FRI).due, '2026-10-07');
+  assert.equal(one('call mum before next Wed', FRI).due, '2026-10-07');
+  assert.equal(one('call mum next wed', FRI).due, '2026-10-07');
+  assert.equal(one('dentist next Wednesday at 3pm', FRI).due, '2026-10-07');
+  assert.equal(one('dentist next Wednesday at 3pm', FRI).time, '15:00');
+  assert.equal(one('finish by next Wed at 3pm', FRI).time, '15:00');
+});
+
+test('bare, this, on, and by mean the upcoming weekday; next means next week', () => {
+  assert.equal(one('call mum by Wednesday', FRI).due, '2026-10-07');
+  assert.equal(one('call mum Wednesday', FRI).due, '2026-10-07');
+  assert.equal(one('call mum on Wednesday', FRI).due, '2026-10-07');
+  assert.equal(one('call mum this Wednesday', FRI).due, '2026-10-07');
+  assert.equal(one('pay this Friday', FRI).due, '2026-10-02'); // today
+  assert.equal(one('pay Friday', FRI).due, '2026-10-02');
+  assert.equal(one('pay on Friday', FRI).due, '2026-10-02');
+  assert.equal(one('pay next Friday', FRI).due, '2026-10-09');
+  // On the weekday itself, bare/this stay today; "next" is the following week.
+  const wed = new Date(2026, 8, 30, 12, 0, 0);
+  assert.equal(one('standup Wednesday', wed).due, '2026-09-30');
+  assert.equal(one('standup this Wednesday', wed).due, '2026-09-30');
+  assert.equal(one('standup next Wednesday', wed).due, '2026-10-07');
+});
+
+test('weekday abbreviations with next, this, and by', () => {
+  assert.equal(one('meet next mon', FRI).due, '2026-10-05');
+  assert.equal(one('meet next tue', FRI).due, '2026-10-06');
+  assert.equal(one('meet next tues', FRI).due, '2026-10-06');
+  assert.equal(one('meet next wed', FRI).due, '2026-10-07');
+  assert.equal(one('meet next thu', FRI).due, '2026-10-08');
+  assert.equal(one('meet next thur', FRI).due, '2026-10-08');
+  assert.equal(one('meet next thurs', FRI).due, '2026-10-08');
+  assert.equal(one('meet next fri', FRI).due, '2026-10-09');
+  assert.equal(one('meet next sat', FRI).due, '2026-10-10');
+  assert.equal(one('meet next sun', FRI).due, '2026-10-11');
+  assert.equal(one('meet this fri', FRI).due, '2026-10-02');
+  assert.equal(one('pay by wed', FRI).due, '2026-10-07');
+  assert.equal(one('meet Mon', FRI).due, null); // bare abbreviation is not a date
+});
+
+test('next week is Monday unless a weekday is named', () => {
+  assert.deepEqual(one('plan trip next week', FRI), T('Plan trip', '2026-10-05'));
+  assert.deepEqual(one('call mum next week on Wednesday', FRI), T('Call mum', '2026-10-07'));
+  assert.deepEqual(one('call mum Wednesday next week', FRI), T('Call mum', '2026-10-07'));
+  assert.deepEqual(one('call mum by next week Wednesday', FRI), T('Call mum', '2026-10-07'));
+  assert.equal(one('dentist next week on Wednesday at 3pm', FRI).time, '15:00');
+  assert.equal(one('dentist next week on Wednesday at 3pm', FRI).due, '2026-10-07');
+});
