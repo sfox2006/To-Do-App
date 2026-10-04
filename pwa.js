@@ -94,7 +94,8 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
 function boot() {
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch((err) => {
+      // Absolute scope so this worker cannot control sibling sites on the same github.io origin.
+      navigator.serviceWorker.register('/To-Do-App/sw.js', { scope: '/To-Do-App/' }).catch((err) => {
         console.warn('Service worker registration failed:', err);
       });
     });

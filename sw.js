@@ -1,25 +1,26 @@
 /* Service worker: offline-first app shell + stale-while-revalidate.
    Bump VERSION whenever you want every client to re-download the shell. */
-const VERSION = 'v8';
+const VERSION = 'v9';
 const CACHE = `todo-app-${VERSION}`;
+const APP_PATH = '/To-Do-App/';
 
-// Relative URLs resolve against the SW location, so this works from any subpath.
+// Absolute paths so this cache never stores a sibling site on the same origin.
 const SHELL = [
-  './',
-  './index.html',
-  './app.js',
-  './store.js',
-  './sync.js',
-  './parser.js',
-  './styles.css',
-  './pwa.js',
-  './manifest.webmanifest',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/icon-maskable-512.png',
-  './icons/apple-touch-icon.png',
-  './icons/favicon.ico',
-  './icons/favicon-32.png'
+  '/To-Do-App/',
+  '/To-Do-App/index.html',
+  '/To-Do-App/app.js',
+  '/To-Do-App/store.js',
+  '/To-Do-App/sync.js',
+  '/To-Do-App/parser.js',
+  '/To-Do-App/styles.css',
+  '/To-Do-App/pwa.js',
+  '/To-Do-App/manifest.webmanifest',
+  '/To-Do-App/icons/icon-192.png',
+  '/To-Do-App/icons/icon-512.png',
+  '/To-Do-App/icons/icon-maskable-512.png',
+  '/To-Do-App/icons/apple-touch-icon.png',
+  '/To-Do-App/icons/favicon.ico',
+  '/To-Do-App/icons/favicon-32.png'
 ];
 
 // Pinned supabase-js. If these were never cached, sync stays off and the app still works.
@@ -46,6 +47,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(
+        // Only this app's previous shells. Cache Storage is shared by every site on the origin.
         keys.filter((k) => k.startsWith('todo-app-') && k !== CACHE).map((k) => caches.delete(k))
       ))
       .then(() => self.clients.claim())
@@ -79,12 +81,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   if (url.origin !== self.location.origin) return;
+  if (!url.pathname.startsWith(APP_PATH)) return;
 
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
     const isNav = req.mode === 'navigate';
     const cached = await cache.match(req, { ignoreSearch: isNav }) ||
-                   (isNav ? await cache.match('./index.html') : undefined);
+                   (isNav ? await cache.match('/To-Do-App/index.html') : undefined);
 
     const network = fetch(req).then((res) => {
       if (res && res.ok && res.type === 'basic') cache.put(req, res.clone());
@@ -99,7 +102,7 @@ self.addEventListener('fetch', (event) => {
       return await network;
     } catch (err) {
       if (isNav) {
-        const fallback = await cache.match('./index.html');
+        const fallback = await cache.match('/To-Do-App/index.html');
         if (fallback) return fallback;
       }
       return new Response('Offline', { status: 503, statusText: 'Offline' });

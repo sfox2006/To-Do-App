@@ -33,7 +33,7 @@ Then open <http://localhost:8000> in Chrome, Edge, Safari or Firefox. Press `Ctr
 2. On GitHub, open the repo's **Settings → Pages**. Under **Build and deployment**, set **Source** to **GitHub Actions**.
 3. Push to `main` (or open the **Actions** tab and run **Deploy to GitHub Pages**). After a minute or so your app is live at `https://<your-username>.github.io/<repo-name>/`.
 
-Every later push to `main` re-deploys automatically. All paths in the app are relative, so it works fine from the `/<repo-name>/` subpath.
+Every later push to `main` re-deploys automatically. The installed app is identified as `/To-Do-App/` (name Brain Dump), so it stays separate from other sites on the same GitHub Pages address.
 
 ### Updating the app for people who already installed it
 
@@ -41,7 +41,7 @@ Installed copies are kept on the device. When you change files, edit `VERSION` a
 
 ## Install it on your device
 
-Open the online address and tap **Install app** in the header. In Chrome and Edge, when the browser offers to install, that tap opens the browser’s own install prompt. There is no app store. On iPhone or iPad, and in browsers that do not offer a prompt, the same button opens a short dialog with the steps for that browser. On iPhone or iPad that is Share, then Add to Home Screen. The button is hidden when the app is already installed.
+Open the online address and tap **Install app** in the header. The installed name is **Brain Dump**. In Chrome and Edge, when the browser offers to install, that tap opens the browser’s own install prompt. There is no app store. On iPhone or iPad, and in browsers that do not offer a prompt, the same button opens a short dialog with the steps for that browser. On iPhone or iPad that is Share, then Add to Home Screen. The button is hidden when the app is already installed.
 
 ## How dates are read
 

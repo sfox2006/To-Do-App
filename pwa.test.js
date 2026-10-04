@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { isIos, isStandalone, installHelp, resolveInstallPrompt } from './pwa.js';
 
 const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
@@ -40,6 +41,24 @@ test('install help matches the browser', () => {
   assert.equal(installHelp(windows).text, chromeEdgeSteps);
   assert.equal(installHelp(edge).text, chromeEdgeSteps);
   assert.equal(installHelp(mac).text, 'Open the browser menu and look for Install app or Add to Home Screen.');
+});
+
+test('the installed app is Brain Dump at /To-Do-App/, not the shared origin', () => {
+  const manifest = JSON.parse(readFileSync(new URL('./manifest.webmanifest', import.meta.url), 'utf8'));
+  assert.equal(manifest.name, 'Brain Dump');
+  assert.equal(manifest.short_name, 'Brain Dump');
+  assert.equal(manifest.id, '/To-Do-App/');
+  assert.equal(manifest.start_url, '/To-Do-App/?source=pwa');
+  assert.equal(manifest.scope, '/To-Do-App/');
+  assert.equal(manifest.start_url.startsWith(manifest.scope), true);
+  const sw = readFileSync(new URL('./sw.js', import.meta.url), 'utf8');
+  assert.match(sw, /const VERSION = 'v9'/);
+  assert.match(sw, /const CACHE = `todo-app-\$\{VERSION\}`/);
+  assert.match(sw, /pathname\.startsWith\(APP_PATH\)/);
+  assert.match(sw, /k\.startsWith\('todo-app-'\)/);
+  assert.doesNotMatch(sw, /dc-social/);
+  const pwa = readFileSync(new URL('./pwa.js', import.meta.url), 'utf8');
+  assert.match(pwa, /register\('\/To-Do-App\/sw\.js', \{ scope: '\/To-Do-App\/' \}\)/);
 });
 
 test('isStandalone accepts display-mode standalone and the iOS navigator flag', () => {
