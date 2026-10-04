@@ -1,29 +1,23 @@
-/* Service worker registration and the Download app button.
+/* Service worker registration and the Install app button.
    beforeinstallprompt is stored as soon as it fires, including before the button exists. */
-export function detectPlatform(ua = '', hints = {}) {
-  const source = String(ua || '');
-  const platform = String(hints.platform || '');
-  const touch = Number(hints.maxTouchPoints) || 0;
-  const iPadOS = platform === 'MacIntel' && touch > 1;
-  if (/iPad|iPhone|iPod/.test(source) || iPadOS) return 'ios';
-  if (/Android/i.test(source)) return 'android';
-  if (/Windows/i.test(source) || /Win32|Win64/.test(platform)) return 'windows';
-  if (/Macintosh|Mac OS X/i.test(source) || platform === 'MacIntel') return 'mac';
-  return 'other';
+
+export function isIos(ua, hints) {
+  const source = ua == null
+    ? (typeof navigator !== 'undefined' ? navigator.userAgent || '' : '')
+    : String(ua);
+  const info = hints || (typeof navigator !== 'undefined'
+    ? { platform: navigator.platform, maxTouchPoints: navigator.maxTouchPoints || 0 }
+    : {});
+  const platform = String(info.platform || '');
+  const touch = Number(info.maxTouchPoints) || 0;
+  return /iPad|iPhone|iPod/.test(source) || (platform === 'MacIntel' && touch > 1);
 }
 
-/** True for Safari on iPhone/iPad. Other iOS browsers include CriOS, FxiOS, EdgiOS. */
-export function isIosSafari(ua = '') {
-  return /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|GSA/.test(ua);
-}
-
-export function isInstalled(nav = {}, matchMedia = () => ({ matches: false })) {
-  const modes = ['standalone', 'fullscreen', 'window-controls-overlay'];
-  for (const mode of modes) {
-    try {
-      if (matchMedia(`(display-mode: ${mode})`).matches) return true;
-    } catch (err) { /* ignore a broken matchMedia */ }
-  }
+/** Installed when the page is standalone, or iOS reports navigator.standalone. */
+export function isStandalone(nav = {}, matchMedia = () => ({ matches: false })) {
+  try {
+    if (matchMedia('(display-mode: standalone)').matches) return true;
+  } catch (err) { /* ignore a broken matchMedia */ }
   return nav.standalone === true;
 }
 
@@ -32,35 +26,59 @@ export function resolveInstallPrompt(local, stashed) {
   return local || stashed || null;
 }
 
-/** One line shown only when the browser will not open its own install prompt. */
-export function installFallback(ua = '', hints = {}) {
-  const platform = detectPlatform(ua, hints);
-  if (platform === 'ios' && isIosSafari(ua)) {
-    return { kind: 'ios', text: 'Share, then Add to Home Screen' };
+/** Browser-specific steps shown when the native install prompt is unavailable. */
+export function installHelp(ua, hints) {
+  const source = ua == null
+    ? (typeof navigator !== 'undefined' ? navigator.userAgent || '' : '')
+    : String(ua);
+  const info = hints || (typeof navigator !== 'undefined'
+    ? { platform: navigator.platform, maxTouchPoints: navigator.maxTouchPoints || 0 }
+    : {});
+  if (isIos(source, info)) {
+    return {
+      heading: 'Add to Home Screen',
+      text: 'Tap Share, then Add to Home Screen.',
+    };
   }
-  if (platform === 'ios') {
-    return { kind: 'text', text: 'Open this page in Safari, then Share, then Add to Home Screen.' };
+  const android = /Android/i.test(source);
+  const firefox = /Firefox/i.test(source);
+  const edgeDesktop = /Edg\//i.test(source) && !/EdgA\//i.test(source);
+  const opera = /OPR\/|Opera/i.test(source);
+  const samsung = /SamsungBrowser/i.test(source);
+  const chrome = /Chrome|Chromium/i.test(source) && !edgeDesktop && !/EdgA\//i.test(source) && !opera && !samsung;
+  if (android && chrome) {
+    return {
+      heading: 'Install app',
+      text: 'Open the menu and choose Install app or Add to Home screen.',
+    };
   }
-  const edge = /Edg\/|EdgA|EdgiOS/.test(ua);
-  const firefox = /Firefox|FxiOS/.test(ua);
-  const chrome = /Chrome|CriOS/.test(ua) && !edge;
-  const safari = /Safari/.test(ua) && !/Chrome|CriOS|Chromium|Edg|FxiOS|Android/.test(ua);
-  if (edge) return { kind: 'text', text: 'In Edge, open the menu, then Apps, then Install this site as an app.' };
-  if (firefox) return { kind: 'text', text: 'Firefox can’t install this web app. Open it in Chrome or Edge.' };
-  if (chrome && platform === 'android') return { kind: 'text', text: 'In Chrome, open the menu and tap Install app.' };
-  if (chrome) return { kind: 'text', text: 'In Chrome, click the install icon in the address bar.' };
-  if (safari) return { kind: 'text', text: 'In Safari, choose File, then Add to Dock.' };
-  return { kind: 'text', text: 'Use your browser’s menu to install this site.' };
+  if (!android && firefox) {
+    return {
+      heading: 'Install app',
+      text: 'Firefox does not install web apps on desktop. Bookmark the page, or open it in Chrome or Edge.',
+    };
+  }
+  if (!android && (chrome || edgeDesktop)) {
+    return {
+      heading: 'Install app',
+      text: 'Click the install icon at the right end of the address bar, or open the browser menu (three dots) and choose Cast, save and share > Install page as app (Chrome) / Apps > Install this site as an app (Edge).',
+    };
+  }
+  return {
+    heading: 'Install app',
+    text: 'Open the browser menu and look for Install app or Add to Home Screen.',
+  };
 }
 
 let deferredPrompt = null;
-let refreshPrompt = () => {};
+let onPrompt = () => {};
+let onInstalled = () => {};
 
 function stashPrompt(event) {
   if (event && event.preventDefault) event.preventDefault();
   deferredPrompt = event;
   if (typeof window !== 'undefined') window.__deferredInstallPrompt = event;
-  refreshPrompt();
+  onPrompt();
 }
 
 if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
@@ -69,8 +87,7 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
   window.addEventListener('appinstalled', () => {
     deferredPrompt = null;
     window.__deferredInstallPrompt = null;
-    refreshPrompt();
-    if (typeof window.__pwaMarkInstalled === 'function') window.__pwaMarkInstalled();
+    onInstalled();
   });
 }
 
@@ -82,76 +99,122 @@ function boot() {
       });
     });
   }
+  bindInstall();
+}
 
-  const downloadBtn = document.getElementById('download-app');
-  const installedEl = document.getElementById('already-installed');
-  const hint = document.getElementById('install-hint');
-  const hintText = document.getElementById('install-hint-text');
-  const hintArrow = document.getElementById('install-hint-arrow');
-  if (!downloadBtn) return;
+function bindInstall() {
+  const install = document.getElementById('install-app');
+  const dialog = document.getElementById('install-dialog');
+  const heading = document.getElementById('install-heading');
+  const instructions = document.getElementById('install-instructions');
+  const closeBtn = document.getElementById('install-close');
+  if (!install) return;
 
-  const ua = navigator.userAgent || '';
-  const hints = { platform: navigator.platform, maxTouchPoints: navigator.maxTouchPoints || 0 };
-  deferredPrompt = resolveInstallPrompt(deferredPrompt, window.__deferredInstallPrompt);
+  let restoreInstallOnClose = false;
 
-  function hideHint() {
-    if (!hint) return;
-    hint.hidden = true;
-    downloadBtn.setAttribute('aria-expanded', 'false');
-  }
-  function markInstalled() {
-    hideHint();
-    downloadBtn.hidden = true;
-    if (installedEl) installedEl.hidden = false;
-  }
-  window.__pwaMarkInstalled = markInstalled;
-  refreshPrompt = () => {};
-
-  if (isInstalled(navigator, (query) => window.matchMedia(query))) {
-    markInstalled();
-    return;
+  function standaloneNow() {
+    return isStandalone(navigator, (query) => window.matchMedia(query));
   }
 
-  function showFallback() {
-    if (!hint || !hintText) return;
-    const fallback = installFallback(ua, hints);
-    hintText.textContent = fallback.text;
-    hint.classList.toggle('is-ios', fallback.kind === 'ios');
-    if (hintArrow) hintArrow.hidden = fallback.kind !== 'ios';
-    hint.hidden = false;
-    downloadBtn.setAttribute('aria-expanded', 'true');
+  function hideInstall() {
+    install.hidden = true;
+    closeInstallDialog(false);
   }
 
-  downloadBtn.addEventListener('click', () => {
-    const prompt = resolveInstallPrompt(deferredPrompt, window.__deferredInstallPrompt);
-    if (prompt) {
-      deferredPrompt = null;
-      window.__deferredInstallPrompt = null;
-      hideHint();
-      try {
-        const pending = prompt.prompt();
-        if (pending && pending.catch) pending.catch(() => {});
-      } catch (err) { /* the browser declined to show its install prompt */ }
-      if (prompt.userChoice) {
-        prompt.userChoice.then((choice) => {
-          if (choice && choice.outcome === 'accepted') markInstalled();
-        }).catch(() => {});
-      }
+  function showInstallButton(mode) {
+    if (standaloneNow()) {
+      install.hidden = true;
       return;
     }
-    if (hint && !hint.hidden) hideHint();
-    else showFallback();
-  });
+    install.hidden = false;
+    if (mode === 'instructions') {
+      install.setAttribute('aria-haspopup', 'dialog');
+      install.setAttribute('aria-controls', 'install-dialog');
+    } else {
+      install.removeAttribute('aria-haspopup');
+      install.removeAttribute('aria-controls');
+    }
+  }
 
-  const close = document.getElementById('install-hint-close');
-  if (close) close.addEventListener('click', hideHint);
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') hideHint();
-  });
-  document.addEventListener('click', (event) => {
-    if (!hint || hint.hidden) return;
-    if (event.target === downloadBtn || hint.contains(event.target)) return;
-    hideHint();
+  function restoreInstallFocus() {
+    if (!install.hidden) install.focus();
+  }
+
+  function openInstallDialog() {
+    if (!dialog) return;
+    const help = installHelp();
+    if (heading) heading.textContent = help.heading;
+    if (instructions) instructions.textContent = help.text;
+    if (dialog.showModal && !dialog.open) dialog.showModal();
+    else dialog.setAttribute('open', '');
+  }
+
+  function closeInstallDialog(restore) {
+    if (!dialog) return;
+    const wasOpen = dialog.open || dialog.hasAttribute('open');
+    if (!wasOpen) return;
+    restoreInstallOnClose = Boolean(restore);
+    if (dialog.close) dialog.close();
+    else dialog.removeAttribute('open');
+    if (!dialog.close && restore) restoreInstallFocus();
+  }
+
+  if (dialog) {
+    dialog.addEventListener('cancel', () => {
+      restoreInstallOnClose = true;
+    });
+    dialog.addEventListener('close', () => {
+      if (!restoreInstallOnClose) return;
+      restoreInstallOnClose = false;
+      restoreInstallFocus();
+    });
+    dialog.addEventListener('click', (event) => {
+      if (event.target === dialog) closeInstallDialog(true);
+    });
+  }
+  if (closeBtn) closeBtn.addEventListener('click', () => closeInstallDialog(true));
+
+  const standaloneQuery = window.matchMedia('(display-mode: standalone)');
+  const onDisplayMode = () => {
+    if (standaloneNow()) hideInstall();
+    else showInstallButton(resolveInstallPrompt(deferredPrompt, window.__deferredInstallPrompt) ? 'native' : 'instructions');
+  };
+  if (standaloneQuery.addEventListener) standaloneQuery.addEventListener('change', onDisplayMode);
+  else if (standaloneQuery.addListener) standaloneQuery.addListener(onDisplayMode);
+
+  onPrompt = () => {
+    if (!standaloneNow()) showInstallButton('native');
+  };
+  onInstalled = hideInstall;
+
+  deferredPrompt = resolveInstallPrompt(deferredPrompt, window.__deferredInstallPrompt);
+  if (standaloneNow()) hideInstall();
+  else showInstallButton(deferredPrompt ? 'native' : 'instructions');
+
+  install.addEventListener('click', async () => {
+    const promptEvent = resolveInstallPrompt(deferredPrompt, window.__deferredInstallPrompt);
+    if (promptEvent) {
+      deferredPrompt = null;
+      window.__deferredInstallPrompt = null;
+      install.disabled = true;
+      let accepted = false;
+      try {
+        const pending = promptEvent.prompt();
+        if (pending && typeof pending.catch === 'function') pending.catch(() => {});
+        const choice = await promptEvent.userChoice;
+        accepted = Boolean(choice && choice.outcome === 'accepted');
+      } catch (err) {
+        if (!standaloneNow()) showInstallButton('instructions');
+        openInstallDialog();
+        return;
+      } finally {
+        install.disabled = false;
+      }
+      if (accepted) hideInstall();
+      else if (!standaloneNow()) showInstallButton('instructions');
+      return;
+    }
+    openInstallDialog();
   });
 }
 

@@ -465,6 +465,8 @@ fileEl.addEventListener('change', async () => {
 
 document.addEventListener('keydown', (e) => {
   if ($('#editor').open) return;
+  const installDialog = $('#install-dialog');
+  if (installDialog && installDialog.open) return;
   const tag = (e.target.tagName || '').toLowerCase();
   const typing = tag === 'input' || tag === 'textarea' || e.target.isContentEditable;
   if (e.key === 'Escape' && !typing) { hideToast(); return; }
