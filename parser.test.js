@@ -11,15 +11,16 @@ const one = (text, now = NOW) => {
 };
 const T = (title, due = null, time = null) => ({ title, due, time });
 
-test('the full example brain dump', () => {
-  const text =
-    'buy milk tomorrow, call mum Friday, submit report by 5 Oct, dentist next Tuesday at 3pm and renew passport end of month';
+test('a full stop is the only split', () => {
+  // Wed 30 Sep 2026: Friday is 2 Oct; next Wednesday is 7 Oct.
+  const text = 'Email Grok, then call Mum and book flights by Friday. Submit essay next Wednesday at 3.30pm.';
   assert.deepEqual(parseTasks(text, NOW), [
-    T('Buy milk', '2026-10-01'),
-    T('Call mum', '2026-10-02'),
-    T('Submit report', '2026-10-05'),
-    T('Dentist', '2026-10-06', '15:00'),
-    T('Renew passport', '2026-09-30'),
+    T('Email Grok, then call Mum and book flights', '2026-10-02'),
+    T('Submit essay', '2026-10-07', '15:30'),
+  ]);
+  assert.deepEqual(parseTasks(text.slice(0, -1), NOW), [
+    T('Email Grok, then call Mum and book flights', '2026-10-02'),
+    T('Submit essay', '2026-10-07', '15:30'),
   ]);
 });
 
@@ -38,7 +39,7 @@ test('today', () => assert.deepEqual(one('pay rent today'), T('Pay rent', '2026-
 test('tonight implies pm for bare hours', () =>
   assert.deepEqual(one('movie tonight at 8'), T('Movie', '2026-09-30', '20:00')));
 
-test('tomorrow', () => assert.deepEqual(one('Tomorrow: file taxes'), T('File taxes', '2026-10-01')));
+test('tomorrow', () => assert.deepEqual(one('file taxes tomorrow'), T('File taxes', '2026-10-01')));
 
 test('weekday: bare, this, on', () => {
   assert.deepEqual(one('call mum Friday'), T('Call mum', '2026-10-02'));
@@ -128,48 +129,31 @@ test('time with no date means today if still ahead, tomorrow if passed', () => {
   assert.deepEqual(one('call dentist at 9am'), T('Call dentist', '2026-10-01', '09:00'));
 });
 
-test('split on newlines, bullets and numbers', () => {
-  const text = '- buy milk\n* call mum Friday\n1. pay rent\n2) walk dog\n• water plants';
-  assert.deepEqual(parseTasks(text, NOW).map((t) => t.title), [
-    'Buy milk', 'Call mum', 'Pay rent', 'Walk dog', 'Water plants',
-  ]);
-  assert.equal(parseTasks(text, NOW)[1].due, '2026-10-02');
-});
-
-test('split on semicolons and commas', () => {
-  assert.deepEqual(parseTasks('call mum; email Bob, book flights', NOW).map((t) => t.title), [
-    'Call mum', 'Email Bob', 'Book flights',
+test('commas, semicolons, and, then, also, bullets, dashes, ? ! and newlines stay one task', () => {
+  const text = '- buy milk, eggs and bread; call mum then also book flights!\nWater plants? Pay rent - soon';
+  assert.deepEqual(parseTasks(text, NOW), [
+    T('- buy milk, eggs and bread; call mum then also book flights! Water plants? Pay rent - soon'),
   ]);
 });
 
-test('split on " and " + verb, and on "then"', () => {
-  assert.deepEqual(parseTasks('walk the dog and feed the cat', NOW).map((t) => t.title), [
-    'Walk the dog', 'Feed the cat',
-  ]);
-  assert.deepEqual(parseTasks('email boss then book flights', NOW).map((t) => t.title), [
-    'Email boss', 'Book flights',
-  ]);
-});
-
-test("don't split 'salt and pepper' style titles", () => {
+test('words between full stops stay, including and / then / commas', () => {
   assert.deepEqual(one('buy salt and pepper'), T('Buy salt and pepper'));
   assert.deepEqual(one('mac and cheese for dinner tomorrow'), T('Mac and cheese for dinner', '2026-10-01'));
   assert.deepEqual(one('call mum and dad on Friday'), T('Call mum and dad', '2026-10-02'));
+  assert.deepEqual(one('buy milk, eggs, bread tomorrow'), T('Buy milk, eggs, bread', '2026-10-01'));
+  assert.deepEqual(one('dentist, next Tuesday at 3pm'), T('Dentist,', '2026-10-06', '15:00'));
+  assert.deepEqual(one('remind me to call mum tomorrow'), T('Remind me to call mum', '2026-10-01'));
 });
 
-test('shopping lists with commas stay as one task', () =>
-  assert.deepEqual(one('buy milk, eggs, bread tomorrow'), T('Buy milk, eggs, bread', '2026-10-01')));
-
-test('dangling date fragment attaches to previous task', () =>
-  assert.deepEqual(parseTasks('dentist, next Tuesday at 3pm', NOW), [T('Dentist', '2026-10-06', '15:00')]));
-
-test('each task gets its own date', () => {
-  const r = parseTasks('call mum tomorrow; pay rent 10/5\nbook flights', NOW);
-  assert.deepEqual(r, [T('Call mum', '2026-10-01'), T('Pay rent', '2026-10-05'), T('Book flights')]);
+test('a sentence keeps every word except the one date phrase that is recognised', () => {
+  assert.deepEqual(parseTasks('call mum tomorrow and dentist Friday\nbook flights', NOW), [
+    T('Call mum and dentist Friday book flights', '2026-10-01'),
+  ]);
+  assert.deepEqual(parseTasks('1. pay rent today. 2) walk the dog', NOW), [
+    T('1. pay rent', '2026-09-30'),
+    T('2) walk the dog'),
+  ]);
 });
-
-test('filler words are stripped from the start', () =>
-  assert.deepEqual(one('remind me to call mum tomorrow'), T('Call mum', '2026-10-01')));
 
 test('year boundary: tomorrow on Dec 31', () =>
   assert.equal(one('x tomorrow', new Date(2026, 11, 31)).due, '2027-01-01'));
@@ -221,9 +205,9 @@ test('sentences split into separate tasks, no trailing period, no over-split on 
   ]);
 });
 
-test('! and ? also end a sentence', () => {
-  assert.deepEqual(parseTasks('Call mum! Book flights? Pay rent', NOW).map((t) => t.title), [
-    'Call mum', 'Book flights', 'Pay rent',
+test('! and ? do not end a task', () => {
+  assert.deepEqual(parseTasks('Call mum! Book flights? Pay rent.', NOW), [
+    T('Call mum! Book flights? Pay rent'),
   ]);
 });
 
@@ -233,12 +217,32 @@ test('sentence split keeps each sentence\'s own date', () => {
   ]);
 });
 
-test('no sentence split on a.m./p.m., Mr., decimals, times, initials', () => {
+test('dots that are not sentence ends do not split', () => {
   assert.deepEqual(one('Meet Mr. Smith at 9 a.m. tomorrow'), T('Meet Mr. Smith', '2026-10-01', '09:00'));
+  assert.deepEqual(one('Meet Mrs. Smith on St. James St. tomorrow'), T('Meet Mrs. Smith on St. James St.', '2026-10-01'));
   assert.deepEqual(one('Pay the 3.30 fee'), T('Pay the 3.30 fee'));
+  assert.deepEqual(one('Reading is 10.15 today'), T('Reading is 10.15', '2026-09-30'));
   assert.deepEqual(one('Email Dr. Jones about v2.0 release'), T('Email Dr. Jones about v2.0 release'));
   assert.deepEqual(one('Call J. Doe'), T('Call J. Doe'));
   assert.deepEqual(one('Ship it e.g. today'), T('Ship it e.g.', '2026-09-30'));
+  assert.deepEqual(one('Bring it i.e. the form etc. tomorrow'), T('Bring it i.e. the form etc.', '2026-10-01'));
+  assert.deepEqual(one('Wait for it... then start tomorrow'), T('Wait for it... then start', '2026-10-01'));
+  assert.deepEqual(
+    one('Open notes.txt and email sam@example.com about https://example.com/a.b today'),
+    T('Open notes.txt and email sam@example.com about https://example.com/a.b', '2026-09-30')
+  );
+  assert.deepEqual(parseTasks('Meet Mr. Smith. Then email Dr. Jones.', NOW).map((t) => t.title), [
+    'Meet Mr. Smith', 'Then email Dr. Jones',
+  ]);
+});
+
+test('no final full stop is still one task, and empty chunks are ignored', () => {
+  assert.deepEqual(parseTasks('buy milk tomorrow', NOW), [T('Buy milk', '2026-10-01')]);
+  assert.deepEqual(parseTasks('Buy milk. . . Call mum Friday.', NOW), [
+    T('Buy milk'), T('Call mum', '2026-10-02'),
+  ]);
+  assert.deepEqual(parseTasks('...', NOW), []);
+  assert.deepEqual(parseTasks(' . ', NOW), []);
 });
 
 test('yesterday is overdue', () => {

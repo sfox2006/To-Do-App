@@ -364,7 +364,7 @@ function submit() {
 
 function updateCount() {
   const v = dumpEl.value.trim();
-  $('#dump-count').textContent = v ? `${v.split(/\n+/).filter(Boolean).length} line(s) ready · ${isMac ? '⌘' : 'Ctrl'}+Enter to add` : 'Separate tasks with commas, new lines or “and then”.';
+  $('#dump-count').textContent = v ? `${v.split(/\n+/).filter(Boolean).length} line(s) ready · ${isMac ? '⌘' : 'Ctrl'}+Enter to add` : 'Separate tasks with a full stop.';
 }
 
 /* ---------- swipe (touch/pen only) ---------- */
@@ -423,7 +423,7 @@ dumpEl.addEventListener('keydown', (e) => {
 });
 dumpEl.addEventListener('input', () => { store.setDraft(dumpEl.value); updateCount(); });
 $('#example').addEventListener('click', () => {
-  dumpEl.value = 'buy milk tomorrow, call mum Friday, dentist at 3pm next Tuesday\npay rent on the 1st\nbook flights, water the plants today';
+  dumpEl.value = 'Buy milk tomorrow. Call mum Friday. Dentist at 3pm next Tuesday. Pay rent on the 1st.';
   store.setDraft(dumpEl.value); updateCount(); dumpEl.focus();
 });
 

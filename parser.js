@@ -18,6 +18,14 @@
 //       Wednesday 14 Oct is the week after that.
 //   "next week" with no weekday → Monday of next week, on purpose.
 //   "next week" plus a weekday ("next week on Wednesday") → that weekday.
+//
+// Tasks are split only at a sentence-ending full stop. Commas, semicolons,
+// "and" / "then" / "also", bullets, dashes, "?" / "!", and line breaks do not
+// split (a line break is a space). A "." inside a decimal, a time (3.30pm,
+// 10.15), an abbreviation (Dr. Mr. Mrs. St. etc. e.g. i.e. a.m. p.m.), an
+// initial, a URL, an email, a file name, or an ellipsis ("...") is not a
+// sentence end. Text with no final full stop is still one task. Empty chunks
+// are dropped. Inside a chunk, only the recognised date/time phrase is removed.
 
 const DAY_MS = 86400000;
 
@@ -108,28 +116,6 @@ const toNum = (s) => (/^\d+$/.test(s) ? parseInt(s, 10) : NUM_WORDS[s.toLowerCas
 const LEAD = '(?:\\bdue\\s+)?(?:\\b(?:by|on|before|until|till|for)\\s+)?';
 const TOD = '(?:\\s+(morning|afternoon|evening|night))?';
 const pmWord = (w) => !!w && /^(afternoon|evening|night)$/i.test(w);
-
-// Common task-leading verbs. Used to decide whether " and X" starts a new task
-// ("buy milk and call mum" splits; "salt and pepper" / "mac and cheese" don't).
-const VERBS = [
-  'add', 'apply', 'ask', 'attend', 'back', 'bake', 'book', 'bring', 'build', 'buy', 'call', 'cancel',
-  'change', 'charge', 'check', 'clean', 'clear', 'collect', 'complete', 'confirm', 'contact', 'cook',
-  'create', 'cut', 'declutter', 'deliver', 'deploy', 'do', 'donate', 'download', 'draft', 'drop',
-  'email', 'empty', 'feed', 'file', 'fill', 'find', 'finish', 'fix', 'fold', 'follow', 'get', 'go',
-  'grab', 'iron', 'install', 'invite', 'join', 'learn', 'look', 'mail', 'make', 'meet', 'message',
-  'mow', 'order', 'organise', 'organize', 'pack', 'paint', 'pay', 'phone', 'pick', 'plan', 'post',
-  'practice', 'practise', 'prep', 'prepare', 'print', 'publish', 'put', 'read', 'recycle', 'refill',
-  'register', 'remember', 'remind', 'renew', 'replace', 'reply', 'research', 'reschedule', 'respond',
-  'return', 'review', 'ring', 'schedule', 'sell', 'send', 'set', 'setup', 'sign', 'sort', 'start',
-  'study', 'submit', 'take', 'talk', 'tell', 'test', 'text', 'thank', 'tidy', 'throw', 'trim',
-  'update', 'upload', 'vacuum', 'visit', 'walk', 'wash', 'watch', 'water', 'wrap', 'write',
-];
-const VERB_ALT = VERBS.join('|');
-const AND_SPLIT_RE = new RegExp(`\\s+and\\s+(?=(?:${VERB_ALT})\\b)`, 'i');
-const THEN_SPLIT_RE = /(?:^|[\s,])(?:and\s+then|then|after\s+that|afterwards)(?=\s|$)/i;
-const STARTS_WITH_VERB_RE = new RegExp(`^(?:${VERB_ALT})\\b`, 'i');
-// Shopping-style heads whose following bare nouns are list items: "buy milk, eggs, bread".
-const LIST_HEAD_RE = /^(?:buy|get|grab|order|pick\s+up|pack|bring|need)\b/i;
 
 /* ───────────────────────── date phrase rules ───────────────────────── */
 // Each rule: a regex (global, case-insensitive) and fn(match, ctx) -> {date, pm?} | null.
@@ -353,7 +339,7 @@ const TIME_RULES = [
     fn: (m) => (/^midnight$/i.test(m[1]) ? '00:00' : '12:00'),
   },
   {
-    re: new RegExp(`${TLEAD}\\b(\\d{1,2})(?::(\\d{2}))?\\s*([ap])\\.?m\\b\\.?`, 'gi'),
+    re: new RegExp(`${TLEAD}\\b(\\d{1,2})(?:[:.](\\d{2}))?\\s*([ap])\\.?m\\b\\.?`, 'gi'),
     fn: (m) => {
       let h = +m[1];
       const min = m[2] ? +m[2] : 0;
@@ -399,109 +385,56 @@ function findTime(text, pm) {
 }
 
 /* ───────────────────────── splitting ───────────────────────── */
+// Titles like Dr./Mr./Mrs./St. The dotted forms e.g. / i.e. / a.m. / p.m.
+// are handled too: the letter immediately before that final dot is one character.
 
-const BULLET_RE = /^\s*(?:(?:[-*+>–—]\s+)|(?:[•·▪●◦]\s*)|(?:\d{1,3}[.)]\s+)|(?:\[[ xX]?\]\s*))+/;
+const ABBREV = new Set(['mr', 'mrs', 'ms', 'dr', 'prof', 'sr', 'jr', 'st', 'etc']);
 
-function splitCommas(part) {
-  // split on commas followed by whitespace/end, but not "Oct 5, 2026" or "1,000"
-  return part.split(/,(?=\s|$)(?!\s*\d{4}\b)/);
+/** True when the "." at index i ends a sentence, not a token. */
+function isSentenceEnd(text, i) {
+  if (text[i] !== '.') return false;
+  if (text[i - 1] === '.' || text[i + 1] === '.') return false; // ellipsis, "..", "..."
+  const next = text[i + 1];
+  // Decimals (3.30), times (10.15), URLs, emails and file names keep their dot
+  // inside the token, so it is not followed by whitespace.
+  if (next !== undefined && !/\s/.test(next)) return false;
+  const token = /([^\s.]*)$/.exec(text.slice(0, i))?.[1] || '';
+  if (!token) return true; // a stray "." between spaces is an empty chunk boundary
+  if (/^[A-Za-z]$/.test(token)) return false; // initial, or the last letter of e.g. / a.m.
+  if (/^\d{1,3}$/.test(token)) return false; // "1." list marker, not a sentence
+  if (ABBREV.has(token.toLowerCase())) return false;
+  return true;
 }
 
-// Words whose trailing "." does not end a sentence.
-const ABBREV_RE = /^(?:mr|mrs|ms|dr|prof|sr|jr|st|mt|vs|e\.g|i\.e|a\.m|p\.m|am|pm|approx|no|inc|ltd|co|[A-Za-z])$/;
-
-// Split "Do this. Then that! Really?" into sentences, leaving "a.m.", "Mr.",
-// "3.30", "J. Smith" alone.
-function splitSentences(part) {
-  const out = [];
-  const re = /[.!?]+(?=\s+\S)/g;
-  let start = 0, m;
-  while ((m = re.exec(part))) {
-    const end = m.index + m[0].length;
-    if (m[0] === '.') {
-      const word = /(\S+)$/.exec(part.slice(start, m.index))?.[1] || '';
-      const w = word.replace(/^[("'\[]+/, '');
-      if (ABBREV_RE.test(w.toLowerCase()) && (w.length > 1 || /[A-Z]/.test(w) || /^[ap]$/i.test(w))) {
-        // "no." only counts as an abbreviation before a digit ("no. 5")
-        if (!(/^no$/i.test(w) && !/^\s+\d/.test(part.slice(end)))) continue;
-      }
-    }
-    out.push(part.slice(start, end));
-    start = end;
-  }
-  out.push(part.slice(start));
-  return out;
+function hasWords(s) {
+  return /[\p{L}\p{N}]/u.test(s);
 }
 
 function splitDump(text) {
-  const out = [];
-  const lines = String(text).split(/\r?\n+/);
-  for (let line of lines) {
-    line = line.replace(BULLET_RE, '');
-    for (const part of line.split(';').flatMap(splitSentences)) {
-      let pieces = splitCommas(part).map((s) => s.trim()).filter(Boolean);
-      pieces = joinListItems(pieces);
-      for (const piece of pieces) {
-        // split on "then" / "and then" / "after that"
-        for (const chunk of piece.split(THEN_SPLIT_RE)) {
-          // split on " and <verb>"
-          for (const sub of chunk.split(AND_SPLIT_RE)) {
-            const s = sub.trim();
-            if (s) out.push(s);
-          }
-        }
-      }
-    }
+  const flat = String(text).replace(/\s+/g, ' ').trim();
+  if (!flat) return [];
+  const parts = [];
+  let start = 0;
+  for (let i = 0; i < flat.length; i++) {
+    if (!isSentenceEnd(flat, i)) continue;
+    if (!/\S/.test(flat.slice(i + 1))) break; // no further sentence; keep this period for cleanup
+    const chunk = flat.slice(start, i).trim();
+    if (hasWords(chunk)) parts.push(chunk);
+    start = i + 1;
   }
-  return out;
-}
-
-// "buy milk, eggs, bread" -> one task, not three. Applies only when the head
-// starts with a shopping-style verb and the following bits are short, verb-less
-// and (unless the list is already under way) undated.
-function joinListItems(pieces) {
-  const ctx = { today: utc(2000, 0, 1) };
-  const res = [];
-  for (const p of pieces) {
-    const prev = res[res.length - 1];
-    const words = p.split(/\s+/).length;
-    if (
-      prev &&
-      LIST_HEAD_RE.test(prev.replace(BULLET_RE, '')) &&
-      words <= 3 &&
-      !STARTS_WITH_VERB_RE.test(p) &&
-      !/^(?:and|then|also|after)\b/i.test(p) &&
-      // a date/time may ride on the last item of a list that already has 2+ items
-      (prev.includes(',') || (!findDate(p, ctx) && !findTime(p, false)))
-    ) {
-      res[res.length - 1] = `${prev}, ${p}`;
-    } else {
-      res.push(p);
-    }
-  }
-  return res;
+  const tail = flat.slice(start).trim();
+  if (hasWords(tail)) parts.push(tail);
+  return parts;
 }
 
 /* ───────────────────────── single-task parsing ───────────────────────── */
 
-const LEADING_FILLER_RE =
-  /^(?:(?:and\s+then|and|then|also|plus|after\s+that)\s+)+|^(?:(?:please\s+)?remind\s+me\s+to|i\s+(?:need|have|got|want)\s+to|(?:we\s+)?need\s+to|don'?t\s+forget\s+to|remember\s+to|to-?do:?|todo:?)\s+/i;
-const TRAILING_DANGLE_RE = /(?:\s+|^)(?:on|at|by|due|before|until|till|around|the|this|next|and|then|also)$/i;
-
 function cleanTitle(s) {
-  let t = s.replace(/\s+/g, ' ');
-  for (let i = 0; i < 4; i++) {
-    const before = t;
-    t = t.replace(/\s+([,.;:!?])/g, '$1');
-    t = t.replace(/^[\s,;:.\-–—]+|[\s,;:!?\-–—]+$/g, '');
-    t = t.replace(/^[(\[]\s*[)\]]|[(\[]\s*[)\]]$/g, '').trim();
-    t = t.replace(LEADING_FILLER_RE, '');
-    t = t.replace(TRAILING_DANGLE_RE, '');
-    t = t.replace(/,\s*,/g, ',');
-    if (t === before) break;
-  }
-  t = t.replace(/[.]+$/, (m) => (/\b\w\.$/.test(t) ? m : '')).trim(); // drop sentence-final dots
-  if (!/[\p{L}\p{N}]/u.test(t)) return '';
+  let t = s.replace(/\s+/g, ' ').trim();
+  // Drop a sentence-ending full stop only. Abbreviations, initials and "..." stay.
+  if (t.endsWith('.') && isSentenceEnd(t, t.length - 1)) t = t.slice(0, -1).trim();
+  t = t.replace(/\s+/g, ' ').trim();
+  if (!hasWords(t)) return '';
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
@@ -534,14 +467,7 @@ export function parseTasks(text, now = new Date()) {
 
   for (const piece of splitDump(text)) {
     const p = parsePiece(piece, ctx);
-    if (p.title) {
-      tasks.push(p);
-    } else if (tasks.length && (p.due || p.time)) {
-      // A fragment like "Friday" / "at 3pm" after a comma belongs to the previous task.
-      const prev = tasks[tasks.length - 1];
-      if (p.due && !prev.due) prev.due = p.due;
-      if (p.time && !prev.time) prev.time = p.time;
-    }
+    if (p.title) tasks.push(p);
   }
 
   // A time with no date ("call dentist at 3pm") means today, or tomorrow if that time has passed.

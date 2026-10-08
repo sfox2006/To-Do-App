@@ -43,6 +43,8 @@ Installed copies are kept on the device. When you change files, edit `VERSION` a
 
 Open the online address and tap **Install app** in the header. The installed name is **Brain Dump**. In Chrome and Edge, when the browser offers to install, that tap opens the browser’s own install prompt. There is no app store. On iPhone or iPad, and in browsers that do not offer a prompt, the same button opens a short dialog with the steps for that browser. On iPhone or iPad that is Share, then Add to Home Screen. The button is hidden when the app is already installed.
 
+Separate tasks with a full stop. Commas, line breaks, and words like “and” or “then” stay in the same task. A dot in a time, abbreviation, or web address does not start a new task.
+
 ## How dates are read
 
 Weeks run Monday to Sunday.
