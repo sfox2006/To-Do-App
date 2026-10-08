@@ -131,6 +131,23 @@ test('old JSON without notes still imports, and bad files throw', () => {
   assert.throws(() => store.importJSON(JSON.stringify({ hello: 'nope' })), /does not look like a backup/);
 });
 
+test('marking a task not done keeps its details and is newer for sync', () => {
+  const [t] = store.addTasks([{ title: 'Call mum', due: '2026-10-02', time: '09:30' }]);
+  store.updateTask(t.id, { note: 'bring the form', done: true });
+  const done = store.getTasks().find((x) => x.id === t.id);
+  assert.equal(done.done, true);
+  assert.ok(done.doneAt);
+  store.updateTask(t.id, { done: false });
+  const back = store.getTasks().find((x) => x.id === t.id);
+  assert.equal(back.done, false);
+  assert.equal(back.doneAt, null);
+  assert.equal(back.title, 'Call mum');
+  assert.equal(back.due, '2026-10-02');
+  assert.equal(back.time, '09:30');
+  assert.equal(back.note, 'bring the form');
+  assert.ok(back.updatedAt > done.updatedAt);
+});
+
 test('undo restore keeps the note', () => {
   const [t] = store.addTasks([{ title: 'Temp' }]);
   store.updateTask(t.id, { note: 'remember this' });

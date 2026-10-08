@@ -104,8 +104,11 @@ function render() {
   }
 
   completedList.replaceChildren(...done.map(taskRow));
-  completedEl.hidden = !done.length && !all.some((t) => t.done);
-  $('#completed-count').textContent = String(all.filter((t) => t.done).length);
+  const doneCount = all.filter((t) => t.done).length;
+  completedEl.hidden = !done.length && !doneCount;
+  $('#completed-count').textContent = String(doneCount);
+  completedEl.querySelector('summary').setAttribute('aria-label',
+    doneCount ? `Completed, ${plural(doneCount, 'task')}. Show or hide.` : 'Completed');
   $('#clear-completed').hidden = !all.some((t) => t.done);
 
   const openAll = all.filter((t) => !t.done).length;
@@ -152,7 +155,12 @@ function taskRow(t) {
         },
       }, el('span', { class: 'title-text', text: t.title })),
       when,
-      notePreview(t)),
+      notePreview(t),
+      t.done ? el('button', {
+        type: 'button', class: 'restore', text: 'Restore',
+        'aria-label': `Move back to to-do: ${t.title}`,
+        onclick: () => restore(t.id),
+      }) : null),
     el('button', { type: 'button', class: 'del', 'aria-label': `Delete: ${t.title}`, title: 'Delete', text: '✕', onclick: () => remove(t.id, li) }));
   const li = el('li', { class: cls.join(' '), 'data-id': t.id },
     el('div', { class: 'swipe-bg', 'aria-hidden': 'true' }, el('span', { class: 'l', text: t.done ? '↺ Undo done' : '✓ Done' }), el('span', { class: 'r', text: 'Delete 🗑' })),
@@ -322,12 +330,26 @@ function startEdit(id, focus) {
   render();
 }
 
+function restore(id) {
+  const task = store.getTasks().find((t) => t.id === id);
+  if (!task || !task.done) return;
+  newIds = new Set([id]);
+  store.updateTask(id, { done: false });
+  toast('Moved back to your list', '', null, 2800);
+}
+
 function toggle(id, checked, li) {
   if (pending.has(id)) return;
-  if (!checked) return store.updateTask(id, { done: false });
+  if (!checked) { restore(id); return; }
   pending.add(id);
-  li.classList.add('completing');
-  setTimeout(() => { pending.delete(id); store.updateTask(id, { done: true }); }, 650);
+  if (li) li.classList.add('completing');
+  setTimeout(() => {
+    pending.delete(id);
+    const task = store.getTasks().find((t) => t.id === id);
+    if (!task || task.done) return;
+    store.updateTask(id, { done: true });
+    toast('Task completed', 'Undo', () => restore(id), 6000);
+  }, 650);
 }
 
 function remove(id, li) {
@@ -402,7 +424,7 @@ function attachSwipe(li, body, t) {
         body.style.transform = '';
         li.classList.remove('swipe-right', 'swipe-left');
         if (final > 0) {
-          if (t.done) store.updateTask(t.id, { done: false });
+          if (t.done) restore(t.id);
           else { const cb = li.querySelector('input'); cb.checked = true; toggle(t.id, true, li); }
         } else remove(t.id, li);
       }, 180);

@@ -162,8 +162,12 @@ export function updateTask(id, patch) {
   state.tasks = state.tasks.map((t) => {
     if (t.id !== id) return t;
     changed = true;
-    const merged = { ...t, ...patch, updatedAt: Date.now() };
-    if ('done' in patch) merged.doneAt = patch.done ? Date.now() : null;
+    const now = Date.now();
+    // Always newer than the previous save, so an un-complete wins newest-wins sync
+    // even when it happens in the same millisecond as marking the task done.
+    const updatedAt = now > t.updatedAt ? now : t.updatedAt + 1;
+    const merged = { ...t, ...patch, updatedAt };
+    if ('done' in patch) merged.doneAt = patch.done ? now : null;
     return normalizeTask(merged) || t;
   });
   if (changed) commit();

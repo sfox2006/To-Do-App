@@ -149,6 +149,12 @@ main { padding: 0 1rem; }
 .del:hover { background: var(--danger-soft); color: var(--danger); }
 .done-task .title-text { text-decoration: line-through; color: var(--muted); }
 .done-task .check input { background: var(--ok); border-color: var(--ok); }
+.restore {
+  align-self: flex-start; margin-top: .35rem; min-width: 44px; min-height: 44px; padding: 0 .9rem;
+  border-radius: 999px; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent);
+  font-weight: 700; font-size: .9rem;
+}
+.restore:hover, .restore:focus-visible { background: var(--accent); color: var(--accent-text); }
 .note-preview {
   display: flex; align-items: center; gap: .35rem; align-self: stretch; max-width: 100%; min-width: 0;
   margin-top: .2rem; padding: .15rem .55rem .15rem .4rem; border: 0; border-radius: 8px;
@@ -173,7 +179,8 @@ main { padding: 0 1rem; }
 
 /* Completed */
 .completed { margin-top: 1.75rem; }
-.completed summary { cursor: pointer; min-height: 2.75rem; list-style: none; }
+.completed summary { cursor: pointer; min-height: 2.75rem; list-style: none; color: var(--text); font-size: .95rem; letter-spacing: .04em; }
+.completed summary .count { background: var(--accent-soft); color: var(--accent); }
 .completed summary::-webkit-details-marker { display: none; }
 .completed summary::before { content: "▸"; transition: transform .15s; display: inline-block; }
 .completed[open] summary::before { transform: rotate(90deg); }
