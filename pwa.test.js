@@ -52,13 +52,17 @@ test('the installed app is Brain Dump at /To-Do-App/, not the shared origin', ()
   assert.equal(manifest.scope, '/To-Do-App/');
   assert.equal(manifest.start_url.startsWith(manifest.scope), true);
   const sw = readFileSync(new URL('./sw.js', import.meta.url), 'utf8');
-  assert.match(sw, /const VERSION = 'v14'/);
+  assert.match(sw, /const VERSION = 'v15'/);
+  assert.match(sw, /function networkFirst/);
+  assert.match(sw, /function isShellCode/);
   assert.match(sw, /const CACHE = `todo-app-\$\{VERSION\}`/);
   assert.match(sw, /pathname\.startsWith\(APP_PATH\)/);
   assert.match(sw, /k\.startsWith\('todo-app-'\)/);
   assert.doesNotMatch(sw, /dc-social/);
   const pwa = readFileSync(new URL('./pwa.js', import.meta.url), 'utf8');
   assert.match(pwa, /register\('\/To-Do-App\/sw\.js', \{ scope: '\/To-Do-App\/' \}\)/);
+  assert.match(pwa, /controllerchange/);
+  assert.match(pwa, /location\.reload\(\)/);
 });
 
 test('isStandalone accepts display-mode standalone and the iOS navigator flag', () => {

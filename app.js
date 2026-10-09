@@ -286,7 +286,7 @@ function openEditor(id, focus = 'title') {
   renderEditorTags();
   render();
   const dlg = $('#editor');
-  if (!dlg.open) dlg.showModal();
+  showDialog(dlg);
   const field = focus === 'note' ? f.note : f.title;
   field.focus();
   if (focus !== 'note' && field.select) field.select();
@@ -317,11 +317,36 @@ function saveEditor() {
   const back = document.querySelector(`[data-id="${CSS.escape(id)}"] .title`);
   if (back) back.focus();
 }
-function bindEditorViewport(dlg) {
+function showDialog(dlg) {
+  document.querySelectorAll('dialog').forEach((other) => {
+    if (other !== dlg && other.open) other.close();
+  });
+  if (dlg.open) return;
+  try {
+    if (typeof dlg.showModal === 'function') dlg.showModal();
+    else dlg.setAttribute('open', '');
+  } catch (err) {
+    // iOS throws if another dialog is still closing. The [open] styles still show the sheet.
+    if (!dlg.open) dlg.setAttribute('open', '');
+  }
+}
+function bindBackdropDismiss(dlg, close) {
+  // iOS delivers the opening tap to whatever is now under the finger. A bottom
+  // sheet's backdrop is the full-screen dialog, so that click used to close it
+  // in the same gesture. Only a pointerdown that starts on the backdrop counts.
+  let pointerOnBackdrop = false;
+  dlg.addEventListener('pointerdown', (e) => { pointerOnBackdrop = e.target === dlg; });
+  dlg.addEventListener('click', (e) => {
+    const dismiss = pointerOnBackdrop && e.target === dlg;
+    pointerOnBackdrop = false;
+    if (dismiss) close();
+  });
+}
+function bindEditorViewport(dlg, { scrollFocused = true } = {}) {
   const vv = window.visualViewport;
   const narrow = () => window.matchMedia('(max-width: 39.99rem)').matches;
   function place() {
-    if (!dlg.open || !narrow() || !vv) {
+    if (!dlg.open || !narrow() || !vv || vv.height < 1) {
       dlg.style.top = '';
       dlg.style.height = '';
       dlg.style.bottom = '';
@@ -331,7 +356,7 @@ function bindEditorViewport(dlg) {
     dlg.style.height = `${vv.height}px`;
     dlg.style.bottom = 'auto';
     const active = document.activeElement;
-    if (active && dlg.contains(active) && active !== dlg && typeof active.scrollIntoView === 'function') {
+    if (scrollFocused && active && dlg.contains(active) && active !== dlg && typeof active.scrollIntoView === 'function') {
       active.scrollIntoView({ block: 'nearest' });
     }
   }
@@ -392,10 +417,15 @@ function setupMenu() {
     if (menu.hidden || wrap.contains(e.target)) return;
     closeMenu(false);
   });
-  wrap.addEventListener('focusout', (e) => {
-    if (menu.hidden) return;
-    const next = e.relatedTarget;
-    if (next && wrap.contains(next)) return;
+  // iOS fires focusout with relatedTarget null before click, and hiding the
+  // menu at that point drops the tap. Ignore focus moves during the tap itself.
+  let tappingMenu = false;
+  wrap.addEventListener('pointerdown', () => {
+    tappingMenu = true;
+    setTimeout(() => { tappingMenu = false; }, 700);
+  });
+  document.addEventListener('focusin', (e) => {
+    if (menu.hidden || tappingMenu || wrap.contains(e.target)) return;
     closeMenu(false);
   });
   menu.addEventListener('keydown', (e) => {
@@ -466,7 +496,7 @@ function setupEditor() {
   });
   bindEditorViewport(dlg);
   dlg.addEventListener('cancel', (e) => { e.preventDefault(); closeEditor(); });
-  dlg.addEventListener('click', (e) => { if (e.target === dlg) closeEditor(); });
+  bindBackdropDismiss(dlg, () => closeEditor());
   dlg.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); saveEditor(); return; }
     if (e.key !== 'Tab') return;
@@ -723,8 +753,9 @@ function openTags() {
   paintNewPalette();
   renderTagManager();
   const dlg = $('#tags-dialog');
-  if (!dlg.open) dlg.showModal();
-  $('#new-tag-name').focus();
+  showDialog(dlg);
+  const input = $('#new-tag-name');
+  if (input) input.focus();
 }
 function closeTags() {
   renamingTag = '';
@@ -755,8 +786,9 @@ function setupTags() {
   $('#tags-undo-btn').addEventListener('click', () => undoManagedTag(pendingTagUndo));
   $('#manage-tags').addEventListener('click', () => openTags());
   const dlg = $('#tags-dialog');
+  bindEditorViewport(dlg, { scrollFocused: false });
   dlg.addEventListener('cancel', (e) => { e.preventDefault(); closeTags(); });
-  dlg.addEventListener('click', (e) => { if (e.target === dlg) closeTags(); });
+  bindBackdropDismiss(dlg, () => closeTags());
   dlg.addEventListener('keydown', (e) => {
     if (e.key !== 'Tab') return;
     const nodes = [...dlg.querySelectorAll('button, input')].filter((n) => !n.disabled && n.offsetParent !== null);

@@ -1,0 +1,12 @@
+{
+  "name": "to-do-app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test parser.test.js store.test.js sync.test.js pwa.test.js",
+    "smoke:tags": "node scripts/manage-tags-touch.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}

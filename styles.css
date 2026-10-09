@@ -20,8 +20,9 @@ body {
   margin: 0; background: var(--bg); color: var(--text);
   font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) calc(env(safe-area-inset-bottom) + 5rem) env(safe-area-inset-left);
-  max-width: 44rem; margin-inline: auto; overflow-x: clip;
+  max-width: 44rem; margin-inline: auto;
 }
+main, .foot { overflow-x: clip; max-width: 100%; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .skip { position: absolute; left: -999px; top: 0; background: var(--accent); color: var(--accent-text); padding: .75rem 1rem; z-index: 100; border-radius: 0 0 8px 0; }
 .skip:focus { left: 0; }
@@ -277,7 +278,7 @@ dialog.editor {
   width: 100%; max-width: none; height: 100%; max-height: none;
   position: fixed; inset: 0; overflow: hidden;
 }
-dialog.editor[open] { display: flex; flex-direction: column; justify-content: flex-end; }
+dialog.editor[open] { display: flex; flex-direction: column; justify-content: flex-end; z-index: 60; }
 dialog.editor::backdrop { background: color-mix(in srgb, #0f1115 48%, transparent); }
 .editor-panel {
   background: var(--surface); color: var(--text); color-scheme: light dark;
@@ -355,7 +356,10 @@ dialog.editor::backdrop { background: color-mix(in srgb, #0f1115 48%, transparen
 @media (max-width: 39.99rem) {
   .editor-panel { animation: sheet-in .22s ease-out; }
 }
-@keyframes sheet-in { from { transform: translateY(100%); } }
+@keyframes sheet-in { from { transform: translateY(100%); } to { transform: none; } }
+@media (max-width: 39.99rem) {
+  #tags-dialog .editor-panel { animation: none; max-height: 100%; }
+}
 @media (min-width: 40rem) {
   dialog.editor[open] { justify-content: center; align-items: center; padding: 1.5rem; }
   .editor-panel {

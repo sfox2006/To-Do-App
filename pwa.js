@@ -93,6 +93,16 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
 
 function boot() {
   if ('serviceWorker' in navigator) {
+    // Reload when an updated worker takes control, so a phone never keeps old
+    // app.js running against a new index.html. The first install has nothing
+    // to replace, so it does not reload.
+    let hadController = Boolean(navigator.serviceWorker.controller);
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController) { hadController = true; return; }
+      if (window.__swReloading) return;
+      window.__swReloading = true;
+      window.location.reload();
+    });
     window.addEventListener('load', () => {
       // Absolute scope so this worker cannot control sibling sites on the same github.io origin.
       navigator.serviceWorker.register('/To-Do-App/sw.js', { scope: '/To-Do-App/' }).catch((err) => {

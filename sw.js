@@ -1,6 +1,6 @@
 /* Service worker: offline-first app shell + stale-while-revalidate.
    Bump VERSION whenever you want every client to re-download the shell. */
-const VERSION = 'v14';
+const VERSION = 'v15';
 const CACHE = `todo-app-${VERSION}`;
 const APP_PATH = '/To-Do-App/';
 
@@ -72,6 +72,25 @@ async function fromCdn(req) {
   }
 }
 
+function isShellCode(req, url) {
+  if (req.mode === 'navigate') return true;
+  return /\.(?:html|js|mjs|css|webmanifest)$/.test(url.pathname);
+}
+
+async function networkFirst(req, cache) {
+  const isNav = req.mode === 'navigate';
+  try {
+    const res = await fetch(req);
+    if (res && res.ok && (res.type === 'basic' || res.type === 'default')) cache.put(req, res.clone());
+    return res;
+  } catch (err) {
+    const cached = await cache.match(req, { ignoreSearch: isNav }) ||
+                   (isNav ? await cache.match('/To-Do-App/index.html') : undefined);
+    if (cached) return cached;
+    return new Response('Offline', { status: 503, statusText: 'Offline' });
+  }
+}
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -85,26 +104,22 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
-    const isNav = req.mode === 'navigate';
-    const cached = await cache.match(req, { ignoreSearch: isNav }) ||
-                   (isNav ? await cache.match('/To-Do-App/index.html') : undefined);
+    // HTML, JS and CSS come from the network when online so an installed
+    // phone cannot pair a new page with an old app.js. Icons stay cached.
+    if (isShellCode(req, url)) return networkFirst(req, cache);
 
+    const cached = await cache.match(req);
     const network = fetch(req).then((res) => {
       if (res && res.ok && res.type === 'basic') cache.put(req, res.clone());
       return res;
     });
-
     if (cached) {
-      network.catch(() => {}); // revalidate in background; ignore offline errors
+      network.catch(() => {});
       return cached;
     }
     try {
       return await network;
     } catch (err) {
-      if (isNav) {
-        const fallback = await cache.match('/To-Do-App/index.html');
-        if (fallback) return fallback;
-      }
       return new Response('Offline', { status: 503, statusText: 'Offline' });
     }
   })());

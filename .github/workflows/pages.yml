@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
       - name: Remove files that should not be published
-        run: rm -rf .git .github
+        run: rm -rf .git .github node_modules scripts package.json package-lock.json
       - uses: actions/upload-pages-artifact@v3
         with:
           path: .
