@@ -181,9 +181,8 @@ function taskRow(t) {
           else openEditor(t.id, 'title');
         },
       }, el('span', { class: 'title-text', text: t.title })),
-      when,
+      el('div', { class: 'meta' }, when, taskTagRow(t)),
       notePreview(t),
-      taskTagRow(t),
       t.done ? el('button', {
         type: 'button', class: 'restore', text: 'Restore',
         'aria-label': `Move back to to-do: ${t.title}`,
@@ -558,11 +557,14 @@ function renderTagBar() {
     'aria-haspopup': 'dialog',
     onclick: () => openTags(),
   }, gearIcon(), el('span', { text: 'Manage' })));
-  const status = tagFilter ? el('p', { class: 'tag-filter' },
-    el('span', { text: `Filtered by #${tagFilter}` }),
-    el('button', { type: 'button', 'aria-label': 'Clear tag filter', text: '×', onclick: () => setTagFilter('') }),
-  ) : null;
-  bar.replaceChildren(chips, status);
+  const parts = [chips];
+  if (tagFilter) {
+    parts.push(el('p', { class: 'tag-filter' },
+      el('span', { text: `Filtered by #${tagFilter}` }),
+      el('button', { type: 'button', 'aria-label': 'Clear tag filter', text: '×', onclick: () => setTagFilter('') }),
+    ));
+  }
+  bar.replaceChildren(...parts);
 }
 function taskTagRow(t) {
   if (!t.tags || !t.tags.length) return null;

@@ -171,7 +171,8 @@ main { padding: 0 1rem; min-width: 0; }
 
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; padding: .35rem 0; }
 .title { background: none; border: 0; text-align: left; padding: .2rem .25rem; margin: 0 -.25rem; min-height: 2rem; width: 100%; font-size: 1.05rem; overflow-wrap: anywhere; border-radius: 8px; }
-.when { background: var(--surface-2); border: 0; border-radius: 999px; padding: .15rem .7rem; min-height: 1.9rem; font-size: .8rem; color: var(--muted); margin-top: .1rem; }
+.meta { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; margin-top: .15rem; max-width: 100%; min-width: 0; }
+.when { background: var(--surface-2); border: 0; border-radius: 999px; padding: .15rem .7rem; min-height: 1.75rem; font-size: .8rem; color: var(--muted); margin: 0; }
 .when.empty { background: none; border: 1px dashed var(--border); }
 .task.overdue .when { background: var(--danger-soft); color: var(--danger); font-weight: 600; }
 .when:hover, .title:hover { background-color: var(--accent-soft); }
@@ -224,19 +225,37 @@ main { padding: 0 1rem; min-width: 0; }
 .foot { padding: 1.5rem 1rem 0; text-align: center; color: var(--muted); font-size: .8rem; }
 .foot-buttons { display: flex; gap: .5rem; justify-content: center; flex-wrap: wrap; margin-bottom: .75rem; }
 .shortcuts { margin: .3rem 0; }
+.kbd-hints { display: none; }
+@media (hover: hover) and (pointer: fine) and (min-width: 40rem) {
+  .kbd-hints { display: block; }
+}
 
 /* Toast */
-.toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 1rem); transform: translateX(-50%); z-index: 50;
-  background: var(--text); color: var(--bg); border-radius: 999px; padding: .4rem .5rem .4rem 1.25rem;
-  display: flex; align-items: center; gap: .75rem; box-shadow: 0 8px 30px rgba(0,0,0,.3); max-width: calc(100vw - 2rem); animation: toast-in .25s ease-out; }
+.toast {
+  position: fixed; left: 16px; right: 16px; width: fit-content; max-width: calc(100% - 32px); margin-inline: auto;
+  bottom: calc(env(safe-area-inset-bottom) + 16px); z-index: 50;
+  background: var(--text); color: var(--bg); border-radius: 999px; padding: 0 1.1rem;
+  display: flex; align-items: stretch; flex-wrap: nowrap; gap: 0;
+  box-shadow: 0 8px 30px rgba(0,0,0,.3); animation: toast-in .25s ease-out;
+}
+.toast:has(.toast-action:not([hidden])) { padding-right: 0; }
 .toast[hidden] { display: none; }
-.toast-action { min-height: 2.75rem; padding: 0 1rem; border-radius: 999px; border: 0; background: transparent; color: var(--accent-soft); font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+#toast-msg { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: .7rem 0; }
+.toast-action {
+  flex: none; min-height: 44px; margin-left: .65rem; padding: 0 1rem;
+  border: 0; border-left: 1px solid color-mix(in srgb, var(--bg) 28%, transparent);
+  border-radius: 0 999px 999px 0; background: transparent; color: var(--accent-soft);
+  font-weight: 800; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap;
+}
+.toast-action[hidden] { display: none; }
 @media (prefers-color-scheme: light) { .toast-action { color: #b9b6ff; } }
 .toast-action:hover { background: rgba(127,127,127,.25); }
 .toast-action:focus-visible { outline-color: currentColor; }
-@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 12px); } }
+@keyframes toast-in { from { opacity: 0; transform: translateY(12px); } }
 
 @media (max-width: 39.99rem) {
+  textarea, #dump, #editor-note { resize: none; }
+  textarea::-webkit-resizer, #dump::-webkit-resizer, #editor-note::-webkit-resizer { display: none; }
   #account-label {
     position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
   }
@@ -393,7 +412,10 @@ button.tag-chip { cursor: pointer; }
   background: var(--surface); font-size: 1.15rem; line-height: 1;
 }
 .task-tags, .editor-tags { display: flex; flex-wrap: wrap; gap: .35rem; max-width: 100%; }
-.task-tags { margin-top: .35rem; }
+.meta .task-tags { display: contents; }
+.meta .tag-chip {
+  min-height: 0; padding: 2px 8px; font-size: 13px; font-weight: 650; line-height: 1.35; gap: .2rem;
+}
 .editor-tags:empty { display: none; }
 .editor-tag-add, .tag-add { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
 .editor-tag-add input, .tag-add input { flex: 1 1 8rem; }
