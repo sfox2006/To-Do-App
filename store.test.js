@@ -17,6 +17,7 @@ const KEY = 'braindump-todo:v1';
 test.beforeEach(() => {
   localStorage.clear();
   store.replaceAll([]);
+  store.replaceTagRegistry(null);
 });
 
 test('migrate turns a v0 array and a v2 backup into notes-capable tasks', () => {
@@ -30,7 +31,7 @@ test('migrate turns a v0 array and a v2 backup into notes-capable tasks', () => 
     tasks: [{ id: 'b', text: '  call mum ', due: '2026-10-02', time: '09:30', done: false, createdAt: 2 }],
   });
   assert.deepEqual(v2.tasks[0], {
-    id: 'b', title: 'call mum', due: '2026-10-02', time: '09:30', note: '', done: false, createdAt: 2, doneAt: null, updatedAt: 2,
+    id: 'b', title: 'call mum', due: '2026-10-02', time: '09:30', note: '', tags: [], done: false, createdAt: 2, doneAt: null, updatedAt: 2,
   });
   assert.equal(store.migrate({ nope: true }), null);
 });
@@ -146,6 +147,82 @@ test('marking a task not done keeps its details and is newer for sync', () => {
   assert.equal(back.time, '09:30');
   assert.equal(back.note, 'bring the form');
   assert.ok(back.updatedAt > done.updatedAt);
+});
+
+test('tags are lowercase, unique, and need a letter', () => {
+  assert.equal(store.normalizeTagName('#Work'), 'work');
+  assert.equal(store.normalizeTagName('uni admin'), 'uni-admin');
+  assert.equal(store.normalizeTagName('#1'), '');
+  assert.equal(store.normalizeTagName('123'), '');
+  const [t] = store.addTasks([{ title: 'A', tags: ['#Work', 'WORK', '1', 'uni-admin', ''] }]);
+  assert.deepEqual(t.tags, ['work', 'uni-admin']);
+  assert.deepEqual(store.getTagCatalog().map((tag) => tag.name), ['uni-admin', 'work']);
+});
+
+test('rename retags every task, merges an existing name, and bumps updatedAt', () => {
+  const [a] = store.addTasks([{ title: 'A', tags: ['work'] }]);
+  const [b] = store.addTasks([{ title: 'B', tags: ['home', 'work'] }]);
+  store.setTagColor('work', 'blue');
+  const before = store.getTasks().find((t) => t.id === a.id).updatedAt;
+  const result = store.renameTag('Work', 'home');
+  assert.equal(result.merged, true);
+  assert.equal(result.renamed, 2);
+  const tasks = Object.fromEntries(store.getTasks().map((t) => [t.id, t]));
+  assert.deepEqual(tasks[a.id].tags, ['home']);
+  assert.deepEqual(tasks[b.id].tags, ['home']);
+  assert.ok(tasks[a.id].updatedAt > before);
+  assert.equal(store.getTagCatalog().some((tag) => tag.name === 'work'), false);
+  assert.equal(store.getTagCatalog().find((tag) => tag.name === 'home').color, '');
+});
+
+test('rename keeps the colour when the new name is new', () => {
+  store.addTasks([{ title: 'A', tags: ['work'] }]);
+  store.setTagColor('work', 'teal');
+  const result = store.renameTag('work', 'office');
+  assert.equal(result.merged, false);
+  assert.equal(store.getTasks()[0].tags[0], 'office');
+  assert.equal(store.getTagCatalog().find((tag) => tag.name === 'office').color, 'teal');
+});
+
+test('deleteTag removes the tag from tasks, keeps the tasks, and undo restores it', () => {
+  const [a] = store.addTasks([{ title: 'Keep me', due: '2026-10-02', tags: ['work'] }]);
+  const before = store.getTasks()[0].updatedAt;
+  const undo = store.deleteTag('work');
+  const gone = store.getTasks()[0];
+  assert.equal(gone.title, 'Keep me');
+  assert.equal(gone.due, '2026-10-02');
+  assert.deepEqual(gone.tags, []);
+  assert.ok(gone.updatedAt > before);
+  assert.equal(store.getTagCatalog().some((tag) => tag.name === 'work'), false);
+  store.undoDeleteTag(undo);
+  const back = store.getTasks().find((t) => t.id === a.id);
+  assert.deepEqual(back.tags, ['work']);
+  assert.ok(back.updatedAt > gone.updatedAt);
+  assert.equal(store.getTagCatalog().some((tag) => tag.name === 'work'), true);
+});
+
+test('colours round-trip in the registry and a __tags__ row is never a task', () => {
+  store.addTag('home', 'pink');
+  store.addTasks([{ title: 'A', tags: ['home'] }]);
+  const saved = JSON.parse(localStorage.getItem(KEY));
+  assert.equal(saved.tags.items.find((tag) => tag.name === 'home').color, 'pink');
+  const exported = JSON.parse(store.exportJSON());
+  assert.equal(exported.tags.items[0].color, 'pink');
+
+  store.replaceAll([]);
+  store.replaceTagRegistry(null);
+  store.importJSON(JSON.stringify(exported));
+  assert.equal(store.getTasks()[0].tags[0], 'home');
+  assert.equal(store.getTagCatalog().find((tag) => tag.name === 'home').color, 'pink');
+
+  const migrated = store.migrate({
+    version: 4,
+    tasks: [
+      { id: '__tags__', title: 'Do not show', kind: 'tags' },
+      { id: 'real', title: 'Real' },
+    ],
+  });
+  assert.deepEqual(migrated.tasks.map((t) => t.id), ['real']);
 });
 
 test('undo restore keeps the note', () => {

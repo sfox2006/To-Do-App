@@ -178,6 +178,86 @@ test('a corrupt newer remote row does not wipe the local task', () => {
   assert.equal(merged.tasks[0].title, 'Safe');
 });
 
+test('the tags row syncs by name and is never returned as a task', () => {
+  const local = {
+    tasks: [task('a', 'A', 10, { tags: ['work'] })],
+    tombstones: [],
+    tags: {
+      updatedAt: 50,
+      items: [{ name: 'work', color: 'blue', createdAt: 50, updatedAt: 50 }],
+      tombstones: [],
+    },
+  };
+  const remoteTags = {
+    id: '__tags__',
+    deleted: false,
+    updated_at: new Date(40).toISOString(),
+    data: {
+      kind: 'tags',
+      updatedAt: 40,
+      tags: [{ name: 'home', color: 'red', createdAt: 40, updatedAt: 40 }],
+      tombstones: [],
+    },
+  };
+  const merged = sync.mergeSync(local, [remoteTags, remote(task('b', 'B', 20))], 1000);
+  assert.equal(merged.tasks.some((t) => t.id === '__tags__'), false);
+  assert.deepEqual(merged.tasks.map((t) => t.id).sort(), ['a', 'b']);
+  assert.deepEqual(merged.tags.items.map((t) => t.name), ['home', 'work']);
+  const row = merged.toPush.find((r) => r.id === '__tags__');
+  assert.equal(row.data.kind, 'tags');
+  assert.equal(row.data.title, undefined);
+  assert.deepEqual(row.data.tags.map((t) => t.name), ['home', 'work']);
+});
+
+test('a newer colour wins, and a newer tombstone drops the tag', () => {
+  const local = {
+    tasks: [],
+    tombstones: [],
+    tags: {
+      updatedAt: 100,
+      items: [{ name: 'work', color: 'blue', createdAt: 10, updatedAt: 100 }],
+      tombstones: [{ name: 'old', updatedAt: 80 }],
+    },
+  };
+  const remoteTags = {
+    id: '__tags__',
+    deleted: false,
+    updated_at: new Date(90).toISOString(),
+    data: {
+      kind: 'tags',
+      updatedAt: 90,
+      tags: [
+        { name: 'work', color: 'red', createdAt: 10, updatedAt: 90 },
+        { name: 'old', color: 'pink', createdAt: 20, updatedAt: 20 },
+      ],
+      tombstones: [],
+    },
+  };
+  const merged = sync.mergeSync(local, [remoteTags], 1000);
+  const work = merged.tags.items.find((t) => t.name === 'work');
+  assert.equal(work.color, 'blue');
+  assert.equal(merged.tags.items.some((t) => t.name === 'old'), false);
+  assert.equal(merged.tags.tombstones.some((t) => t.name === 'old'), true);
+  assert.equal(merged.tasks.length, 0);
+  assert.equal(merged.toPush.some((r) => r.id === '__tags__'), true);
+});
+
+test('rowsToPush sends a newer tags row and skips one the server already has', () => {
+  const snap = {
+    tasks: [task('a', 'A', 10)],
+    tombstones: [],
+    tags: {
+      updatedAt: 50,
+      items: [{ name: 'work', color: '', createdAt: 50, updatedAt: 50 }],
+      tombstones: [],
+    },
+  };
+  const fresh = sync.rowsToPush(snap, new Map(), 'user-1');
+  assert.equal(fresh.some((r) => r.id === '__tags__' && r.data.kind === 'tags'), true);
+  const held = sync.rowsToPush(snap, new Map([['__tags__', 50], ['a', 10]]), 'user-1');
+  assert.deepEqual(held, []);
+});
+
 test('rowsToPush skips rows the server already has', () => {
   const snap = {
     tasks: [task('a', 'A', 10), task('b', 'B', 30)],
@@ -229,6 +309,35 @@ test('signing in merges remote tasks and pushes local ones without dropping eith
     assert.equal(pushed.some((r) => r.id === 'a' && r.user_id === 'user-1' && r.deleted === false), true);
     assert.equal(pushed.some((r) => r.id === 'b'), false);
     assert.equal(statuses.at(-1), 'synced');
+  } finally {
+    engine.stop();
+  }
+});
+
+test('a pulled tags row is stored and is not shown as a task', async () => {
+  store.applySyncSnapshot({ tasks: [task('a', 'From laptop', 10)], tombstones: [], tags: { updatedAt: 0, items: [], tombstones: [] } });
+  const pushed = [];
+  const remoteRows = [
+    remote(task('b', 'From phone', 20)),
+    {
+      id: '__tags__',
+      deleted: false,
+      updated_at: new Date(30).toISOString(),
+      data: {
+        kind: 'tags',
+        updatedAt: 30,
+        tags: [{ name: 'work', color: 'green', createdAt: 30, updatedAt: 30 }],
+        tombstones: [],
+      },
+    },
+  ];
+  const engine = sync.createSync(store, fakeClient(remoteRows, pushed), { pushDelay: 0, pullDelay: 0 });
+  try {
+    await engine.useSession({ user: { id: 'user-1' } });
+    assert.deepEqual(store.getTasks().map((t) => t.title).sort(), ['From laptop', 'From phone']);
+    assert.equal(store.getTasks().some((t) => t.id === '__tags__'), false);
+    assert.equal(store.getTagCatalog().find((t) => t.name === 'work').color, 'green');
+    assert.equal(pushed.some((r) => r.id === '__tags__'), false);
   } finally {
     engine.stop();
   }

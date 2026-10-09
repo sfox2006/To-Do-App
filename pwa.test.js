@@ -52,7 +52,7 @@ test('the installed app is Brain Dump at /To-Do-App/, not the shared origin', ()
   assert.equal(manifest.scope, '/To-Do-App/');
   assert.equal(manifest.start_url.startsWith(manifest.scope), true);
   const sw = readFileSync(new URL('./sw.js', import.meta.url), 'utf8');
-  assert.match(sw, /const VERSION = 'v11'/);
+  assert.match(sw, /const VERSION = 'v12'/);
   assert.match(sw, /const CACHE = `todo-app-\$\{VERSION\}`/);
   assert.match(sw, /pathname\.startsWith\(APP_PATH\)/);
   assert.match(sw, /k\.startsWith\('todo-app-'\)/);

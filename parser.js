@@ -1,7 +1,7 @@
 // parser.js — turn a free-form brain dump into tasks.
 // Pure, dependency-free ES module; works in the browser and in Node.
 //
-//   parseTasks(text, now = new Date()) -> [{ title, due: 'YYYY-MM-DD'|null, time: 'HH:MM'|null }]
+//   parseTasks(text, now = new Date()) -> [{ title, due: 'YYYY-MM-DD'|null, time: 'HH:MM'|null, tags: string[] }]
 //   bucketFor(dueISO, now = new Date()) -> 'overdue'|'today'|'tomorrow'|'this-week'|'next-week'|'later'|'no-date'
 //
 // "Today" is taken from the *local* calendar fields of `now` (the user is in
@@ -26,6 +26,9 @@
 // initial, a URL, an email, a file name, or an ellipsis ("...") is not a
 // sentence end. Text with no final full stop is still one task. Empty chunks
 // are dropped. Inside a chunk, only the recognised date/time phrase is removed.
+// A #word (letters, digits, - or _, and at least one letter) is a tag: it is
+// taken off the title, lowercased, and returned in tags. #1 / #123 are not tags.
+// A # that is not at the start or after a space (URLs, emails, C#) is left as-is.
 
 const DAY_MS = 86400000;
 
@@ -438,8 +441,28 @@ function cleanTitle(s) {
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
+// #work, #uni-admin, #1a. Not #1 or #123. The character after the token must not
+// continue the token, so a hyphen stays inside #uni-admin (a word boundary would not).
+const HASH_TAG = /(^|\s)#([A-Za-z0-9_-]*[A-Za-z][A-Za-z0-9_-]*)(?![A-Za-z0-9_-])/g;
+
+function takeTags(text) {
+  const tags = [];
+  const seen = new Set();
+  const next = String(text).replace(HASH_TAG, (full, lead, raw) => {
+    const name = raw.toLowerCase().slice(0, 40);
+    if (!/[a-z]/.test(name)) return full;
+    if (!seen.has(name)) {
+      seen.add(name);
+      tags.push(name);
+    }
+    return lead ? ' ' : '';
+  });
+  return { text: next, tags };
+}
+
 function parsePiece(piece, ctx) {
-  let text = piece;
+  const tagged = takeTags(piece);
+  let text = tagged.text;
   const d = findDate(text, ctx);
   if (d) text = text.slice(0, d.start) + ' ' + text.slice(d.end);
   const t = findTime(text, d ? d.pm : false);
@@ -448,6 +471,7 @@ function parsePiece(piece, ctx) {
     title: cleanTitle(text),
     due: d ? toISO(d.date) : null,
     time: t ? t.time : null,
+    tags: tagged.tags,
   };
 }
 
@@ -457,7 +481,7 @@ function parsePiece(piece, ctx) {
  * Parse a free-form brain dump into tasks.
  * @param {string} text
  * @param {Date} [now]
- * @returns {{title: string, due: string|null, time: string|null}[]}
+ * @returns {{title: string, due: string|null, time: string|null, tags: string[]}[]}
  */
 export function parseTasks(text, now = new Date()) {
   if (typeof text !== 'string' || !text.trim()) return [];

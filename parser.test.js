@@ -9,7 +9,7 @@ const one = (text, now = NOW) => {
   assert.equal(r.length, 1, `expected 1 task for ${JSON.stringify(text)}, got ${JSON.stringify(r)}`);
   return r[0];
 };
-const T = (title, due = null, time = null) => ({ title, due, time });
+const T = (title, due = null, time = null, tags = []) => ({ title, due, time, tags });
 
 test('a full stop is the only split', () => {
   // Wed 30 Sep 2026: Friday is 2 Oct; next Wednesday is 7 Oct.
@@ -341,4 +341,33 @@ test('next week is Monday unless a weekday is named', () => {
   assert.deepEqual(one('call mum by next week Wednesday', FRI), T('Call mum', '2026-10-07'));
   assert.equal(one('dentist next week on Wednesday at 3pm', FRI).time, '15:00');
   assert.equal(one('dentist next week on Wednesday at 3pm', FRI).due, '2026-10-07');
+});
+
+test('#words become tags and are removed from the title before the date is read', () => {
+  assert.deepEqual(one('Email #work by Friday'), T('Email', '2026-10-02', null, ['work']));
+  assert.deepEqual(
+    one('Submit #uni-admin essay next Wednesday at 3.30pm'),
+    T('Submit essay', '2026-10-07', '15:30', ['uni-admin']),
+  );
+  assert.deepEqual(one('#mercatus call mum Friday'), T('Call mum', '2026-10-02', null, ['mercatus']));
+  assert.deepEqual(one('Ping #Work and #work tomorrow'), T('Ping and', '2026-10-01', null, ['work']));
+  assert.deepEqual(one('Track #1a and #work1 today'), T('Track and', '2026-09-30', null, ['1a', 'work1']));
+  assert.deepEqual(parseTasks('Buy #home milk. Call #work mum Friday.', NOW), [
+    T('Buy milk', null, null, ['home']),
+    T('Call mum', '2026-10-02', null, ['work']),
+  ]);
+});
+
+test('pure numbers, URLs, emails and C# are not tags', () => {
+  assert.deepEqual(one('Item #1 today'), T('Item #1', '2026-09-30'));
+  assert.deepEqual(one('Item #123 tomorrow'), T('Item #123', '2026-10-01'));
+  assert.deepEqual(
+    one('See https://example.com/a#section today'),
+    T('See https://example.com/a#section', '2026-09-30'),
+  );
+  assert.deepEqual(
+    one('Email sam#work@example.com today'),
+    T('Email sam#work@example.com', '2026-09-30'),
+  );
+  assert.deepEqual(one('Learn C# today'), T('Learn C#', '2026-09-30'));
 });

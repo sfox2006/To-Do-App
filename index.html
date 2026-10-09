@@ -69,9 +69,11 @@
 
     <div class="search" role="search">
       <label for="search" class="sr-only">Search tasks and notes</label>
-      <input id="search" type="search" placeholder="Search tasks and notes…  ( / )" autocomplete="off">
+      <input id="search" type="search" placeholder="Search tasks, notes, or #tag  ( / )" autocomplete="off">
       <p id="search-status" class="sr-only" aria-live="polite"></p>
     </div>
+
+    <div id="tag-bar" class="tag-bar" hidden></div>
 
     <div id="lists"></div>
 
@@ -86,6 +88,7 @@
 
   <footer class="foot">
     <div class="foot-buttons">
+      <button type="button" id="manage-tags" class="ghost">Manage tags</button>
       <button type="button" id="export" class="ghost">Export backup</button>
       <button type="button" id="import" class="ghost">Import backup</button>
       <input id="import-file" type="file" accept="application/json,.json" hidden>
@@ -96,7 +99,7 @@
     </div>
     <p class="shortcuts"><kbd>Ctrl/⌘</kbd>+<kbd>Enter</kbd> add · <kbd>/</kbd> search · <kbd>N</kbd> new dump · <kbd>Esc</kbd> cancel</p>
     <p class="shortcuts">Swipe a task right to complete, left to delete. Undo is on the toast, or open Completed and tap Restore. The list is kept on this device and shared when Sync is on.</p>
-    <p class="shortcuts">Tap a task to edit it or add a note. Tap the date for a quick in-list edit.</p>
+    <p class="shortcuts">Tap a task to edit it, add a note, or add a tag. Tap a tag to filter. Tap the date for a quick in-list edit.</p>
   </footer>
 
   <dialog id="install-dialog" aria-labelledby="install-heading">
@@ -116,7 +119,7 @@
     <form id="editor-form" class="editor-panel">
       <div class="editor-handle" aria-hidden="true"></div>
       <h2 id="editor-heading">Edit task</h2>
-      <p id="editor-hint" class="sr-only">Change the title, date, time, and note. Press Escape to cancel.</p>
+      <p id="editor-hint" class="sr-only">Change the title, date, time, note, and tags. Press Escape to cancel.</p>
       <label for="editor-task-title">Title</label>
       <input id="editor-task-title" type="text" maxlength="500" autocomplete="off" spellcheck="true" enterkeyhint="done" required>
       <div class="editor-when">
@@ -129,12 +132,47 @@
       </div>
       <label for="editor-note">Note</label>
       <textarea id="editor-note" rows="5" maxlength="4000" placeholder="Add a note…" spellcheck="true"></textarea>
+      <label for="editor-tag-input">Tags</label>
+      <div id="editor-tags" class="editor-tags"></div>
+      <div class="editor-tag-add">
+        <input id="editor-tag-input" type="text" maxlength="40" placeholder="Add a tag" list="editor-tag-suggestions" autocomplete="off" enterkeyhint="done" aria-describedby="editor-tag-hint">
+        <button type="button" id="editor-tag-add">Add</button>
+      </div>
+      <p id="editor-tag-hint" class="hint">A word like work or uni-admin. Pick a suggestion, or type a new one.</p>
+      <datalist id="editor-tag-suggestions"></datalist>
       <div class="editor-actions">
         <button type="submit" class="save" id="editor-save">Save</button>
         <button type="button" id="editor-cancel">Cancel</button>
         <button type="button" id="editor-nodate">No date</button>
       </div>
       <button type="button" id="editor-delete" class="editor-delete">Delete task</button>
+    </form>
+  </dialog>
+
+  <dialog id="tags-dialog" class="editor" aria-labelledby="tags-heading">
+    <form id="tags-form" class="editor-panel">
+      <div class="editor-handle" aria-hidden="true"></div>
+      <div class="tags-head">
+        <h2 id="tags-heading">Manage tags</h2>
+        <button type="button" class="icon-btn" id="tags-close" aria-label="Close manage tags">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.41 4.29 19.71 2.88 18.29 9.17 12 2.88 5.71 4.29 4.29l6.3 6.3 6.3-6.3z"/>
+          </svg>
+        </button>
+      </div>
+      <p class="hint">Add a tag, rename it, give it a colour, or delete it. Deleting a tag takes it off every task. The tasks stay. Colours and names sync with your other devices.</p>
+      <p id="tags-undo" class="tag-undo" hidden>
+        <span id="tags-undo-msg"></span>
+        <button type="button" id="tags-undo-btn">Undo</button>
+      </p>
+      <div class="tag-add">
+        <label class="sr-only" for="new-tag-name">New tag name</label>
+        <input id="new-tag-name" type="text" maxlength="40" placeholder="New tag" autocomplete="off">
+        <div id="new-tag-palette" class="palette"></div>
+        <button type="submit" class="save" id="new-tag-add">Add tag</button>
+      </div>
+      <ul id="tag-manager" class="tag-manager"></ul>
+      <p id="tags-empty" class="hint" hidden>No tags yet. Add one here, or type #work in a brain dump.</p>
     </form>
   </dialog>
 

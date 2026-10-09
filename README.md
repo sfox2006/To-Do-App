@@ -56,7 +56,9 @@ Weeks run Monday to Sunday.
 
 ## Good to know
 
-- Tap a task to edit the title, date, time, and an optional note. A task with a note shows a short preview in the list, and the search box looks through notes too. Notes are included in backups, and they travel with the task when sync is on.
+- Type `#work` in a brain dump and that word becomes a tag on the task (not part of the title). `#1` and a `#` inside a web address stay as they are. Tap a tag under the search box, or on a task, to show only that tag. The choice stays on this device. While a tag is selected, new tasks pick it up too.
+- **Manage tags** (the Manage chip, or the button at the bottom) lists every tag and how many tasks use it. You can add one, optionally with a colour, rename it (every task follows, and an existing name is merged), or delete it after a confirm. Delete takes the tag off the tasks and leaves the tasks. Undo brings it back. Colours show on the chips. The list of tags syncs with your other devices.
+- Tap a task to edit the title, date, time, tags, and an optional note. A task with a note shows a short preview in the list, and the search box looks through notes too. Notes and tags are included in backups, and they travel with the task when sync is on.
 - Your to-dos are stored on this device and the app works offline. When you are online, the same list is shared automatically with every device that opens the app. A switch at the bottom turns that sync off on this device.
 - Clearing your browser data for the site will erase your to-dos.
 - After the first visit the app opens without internet.

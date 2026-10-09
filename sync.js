@@ -1,6 +1,6 @@
 // Automatic cross-device sync for the single owner. The list stays local-first:
 // a failure never clears tasks, and the app works with sync switched off.
-import { migrate } from './store.js';
+import { migrate, mergeTagRegistries, normalizeTagRegistry, TAGS_ROW_ID } from './store.js';
 
 export const SUPABASE_URL = 'https://ymqknizwlyzmemsizdls.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_TgJumUd6xOE6GKRX9dkLzg_fPNd3KrH';
@@ -99,6 +99,26 @@ export function mergeSync(local, remoteRows, now = Date.now()) {
   const tasks = [];
   const tombstones = [];
   const toPush = [];
+
+  const localTags = normalizeTagRegistry(local && local.tags);
+  const remoteTagEntry = remoteMap.get(TAGS_ROW_ID);
+  localMap.delete(TAGS_ROW_ID);
+  remoteMap.delete(TAGS_ROW_ID);
+  const remoteTags = registryFromRemote(remoteTagEntry);
+  let tags = mergeTagRegistries(localTags, remoteTags);
+  const remoteTagAt = remoteTagEntry && !remoteTagEntry.deleted ? remoteTagEntry.updatedAt : 0;
+  if (registryContent(tags) !== registryContent(remoteTags)) {
+    if (tags.updatedAt <= remoteTagAt) tags = { ...tags, updatedAt: remoteTagAt + 1 };
+    if (tags.updatedAt > remoteTagAt) {
+      toPush.push(rowFrom(TAGS_ROW_ID, tags.updatedAt, false, {
+        kind: 'tags',
+        tags: tags.items,
+        tombstones: tags.tombstones,
+        updatedAt: tags.updatedAt,
+      }));
+    }
+  }
+
   for (const id of new Set([...localMap.keys(), ...remoteMap.keys()])) {
     const L = localMap.get(id);
     const R = remoteMap.get(id);
@@ -133,7 +153,25 @@ export function mergeSync(local, remoteRows, now = Date.now()) {
       if (push) toPush.push(rowFrom(id, task.updatedAt, false, task));
     }
   }
-  return { tasks, tombstones, toPush };
+  return { tasks, tombstones, tags, toPush };
+}
+
+function registryFromRemote(entry) {
+  if (!entry || entry.deleted) return normalizeTagRegistry(null);
+  const data = entry.task && typeof entry.task === 'object' ? entry.task : {};
+  return normalizeTagRegistry({
+    updatedAt: toMillis(data.updatedAt) || entry.updatedAt || 0,
+    items: data.tags || data.items || [],
+    tombstones: data.tombstones || [],
+  });
+}
+
+function registryContent(reg) {
+  const items = [...(reg.items || [])]
+    .map((i) => `${i.name}\t${i.color || ''}\t${i.createdAt}\t${i.updatedAt}`)
+    .sort();
+  const tombs = [...(reg.tombstones || [])].map((t) => `${t.name}\t${t.updatedAt}`).sort();
+  return `${items.join('\n')}#${tombs.join('\n')}`;
 }
 
 /** Rows the server does not already have at this updatedAt. */
@@ -144,8 +182,23 @@ export function rowsToPush(snapshot, remoteTimes, userId) {
     const known = times.has(id) ? times.get(id) : null;
     if (known == null || updatedAt > known) rows.push({ ...rowFrom(id, updatedAt, deleted, task), user_id: userId });
   };
-  for (const t of (snapshot && snapshot.tasks) || []) consider(t.id, toMillis(t.updatedAt), false, t);
-  for (const tomb of (snapshot && snapshot.tombstones) || []) consider(tomb.id, toMillis(tomb.updatedAt), true, tomb.task);
+  for (const t of (snapshot && snapshot.tasks) || []) {
+    if (t.id === TAGS_ROW_ID) continue;
+    consider(t.id, toMillis(t.updatedAt), false, t);
+  }
+  for (const tomb of (snapshot && snapshot.tombstones) || []) {
+    if (tomb.id === TAGS_ROW_ID) continue;
+    consider(tomb.id, toMillis(tomb.updatedAt), true, tomb.task);
+  }
+  const reg = normalizeTagRegistry(snapshot && snapshot.tags);
+  if (reg.updatedAt) {
+    consider(TAGS_ROW_ID, reg.updatedAt, false, {
+      kind: 'tags',
+      tags: reg.items,
+      tombstones: reg.tombstones,
+      updatedAt: reg.updatedAt,
+    });
+  }
   return rows;
 }
 
@@ -222,7 +275,7 @@ export function createSync(store, client, { onStatus, pushDelay = 700, pullDelay
     if (stopped || !session) return;
     const merged = plan(rows);
     applying = true;
-    try { store.applySyncSnapshot({ tasks: merged.tasks, tombstones: merged.tombstones }); }
+    try { store.applySyncSnapshot({ tasks: merged.tasks, tombstones: merged.tombstones, tags: merged.tags }); }
     finally { applying = false; }
     remoteTimes.clear();
     for (const row of rows) {

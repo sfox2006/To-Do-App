@@ -12,7 +12,17 @@ const GROUPS = [
   ['this-week', 'This week'], ['next-week', 'Next week'], ['later', 'Later'], ['no-date', 'No date'],
 ];
 
+const TAG_FILTER_KEY = 'braindump-todo:tag-filter';
+const TAG_COLOR_LABELS = {
+  red: 'Red', orange: 'Orange', amber: 'Amber', green: 'Green',
+  teal: 'Teal', blue: 'Blue', violet: 'Violet', pink: 'Pink',
+};
 let query = '';
+let tagFilter = '';
+let editorTags = [];
+let renamingTag = '';
+let newTagColor = '';
+let pendingTagUndo = null;
 let editing = null;          // { id, focus: 'title'|'date' } quick in-list edit
 let editor = null;           // { id } full edit sheet/modal
 let newIds = new Set();      // recently added -> highlight
@@ -71,15 +81,25 @@ function hideToast() { clearTimeout(toastTimer); toastEl.hidden = true; }
 /* ---------- rendering ---------- */
 function noteLine(note) { return String(note || '').replace(/\s+/g, ' ').trim(); }
 function matches(t) {
+  if (tagFilter && !(t.tags || []).includes(tagFilter)) return false;
   if (!query) return true;
   const q = query.toLowerCase();
   const note = (t.note || '').toLowerCase();
   return t.title.toLowerCase().includes(q)
     || (note && (note.includes(q) || note.replace(/\s+/g, ' ').includes(q)))
+    || (t.tags || []).some((name) => name.includes(q))
     || (t.due && (t.due.includes(q) || fmtWhen(t).toLowerCase().includes(q)));
 }
 
 function render() {
+  if (tagFilter) {
+    const live = store.getTagCatalog().some((t) => t.name === tagFilter);
+    const buried = store.getTagRegistry().tombstones.some((t) => t.name === tagFilter);
+    if (buried && !live) {
+      tagFilter = '';
+      try { localStorage.removeItem(TAG_FILTER_KEY); } catch {}
+    }
+  }
   const all = store.getTasks();
   if (editor && !all.some((t) => t.id === editor.id)) {
     editor = null;
@@ -114,11 +134,18 @@ function render() {
   const openAll = all.filter((t) => !t.done).length;
   if (!visible.length) {
     emptyEl.hidden = false;
-    emptyEl.textContent = query ? `No tasks match “${query}”.` : 'Nothing to do yet. Dump your thoughts above ☝️';
-  } else if (!open.length && !query) {
+    emptyEl.textContent = tagFilter && !query
+      ? `No tasks tagged #${tagFilter}.`
+      : query ? `No tasks match “${query}”.` : 'Nothing to do yet. Dump your thoughts above ☝️';
+  } else if (!open.length && !query && !tagFilter) {
     emptyEl.hidden = false; emptyEl.textContent = openAll ? '' : 'All clear! 🎉 Nothing left to do.';
   } else emptyEl.hidden = true;
-  $('#search-status').textContent = query ? `${plural(visible.length, 'task')} found` : '';
+  const status = [];
+  if (tagFilter) status.push(`Filtered by #${tagFilter}`);
+  if (query || tagFilter) status.push(`${plural(visible.length, 'task')} ${query ? 'found' : 'shown'}`);
+  $('#search-status').textContent = status.join('. ');
+  renderTagBar();
+  if ($('#tags-dialog') && $('#tags-dialog').open) renderTagManager();
 
   newIds = new Set();
   if (editing && !($('#editor') && $('#editor').open)) {
@@ -156,6 +183,7 @@ function taskRow(t) {
       }, el('span', { class: 'title-text', text: t.title })),
       when,
       notePreview(t),
+      taskTagRow(t),
       t.done ? el('button', {
         type: 'button', class: 'restore', text: 'Restore',
         'aria-label': `Move back to to-do: ${t.title}`,
@@ -253,6 +281,10 @@ function openEditor(id, focus = 'title') {
   f.time.value = t.time || '';
   f.time.disabled = !t.due;
   f.note.value = t.note || '';
+  editorTags = [...(t.tags || [])];
+  const tagInput = $('#editor-tag-input');
+  if (tagInput) tagInput.value = '';
+  renderEditorTags();
   render();
   const dlg = $('#editor');
   if (!dlg.open) dlg.showModal();
@@ -278,10 +310,11 @@ function saveEditor() {
   const due = f.date.value || null;
   const time = due ? (f.time.value || null) : null;
   const note = f.note.value;
+  const tags = editorTags.slice();
   editor = null;
   const dlg = $('#editor');
   if (dlg.open) dlg.close();
-  store.updateTask(id, { title, due, time, note });
+  store.updateTask(id, { title, due, time, note, tags });
   const back = document.querySelector(`[data-id="${CSS.escape(id)}"] .title`);
   if (back) back.focus();
 }
@@ -310,12 +343,302 @@ function setupEditor() {
     f.date.focus();
   });
   $('#editor-delete').addEventListener('click', () => deleteFromEditor());
+  $('#editor-tag-add').addEventListener('click', () => addEditorTag());
+  $('#editor-tag-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addEditorTag(); }
+  });
   dlg.addEventListener('cancel', (e) => { e.preventDefault(); closeEditor(); });
   dlg.addEventListener('click', (e) => { if (e.target === dlg) closeEditor(); });
   dlg.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); saveEditor(); return; }
     if (e.key !== 'Tab') return;
     const nodes = focusables(dlg);
+    if (!nodes.length) return;
+    const first = nodes[0], last = nodes[nodes.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+}
+
+function colorOf(name) {
+  const hit = store.getTagCatalog().find((t) => t.name === name);
+  return hit && hit.color ? hit.color : '';
+}
+function chipClass(name, extra) {
+  const color = colorOf(name);
+  return ['tag-chip', extra, color ? 'c-' + color : ''].filter(Boolean).join(' ');
+}
+function gearIcon() {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', '16');
+  svg.setAttribute('height', '16');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('class', 'glyph');
+  const circle = document.createElementNS(ns, 'circle');
+  circle.setAttribute('cx', '12');
+  circle.setAttribute('cy', '12');
+  circle.setAttribute('r', '3');
+  circle.setAttribute('fill', 'none');
+  circle.setAttribute('stroke', 'currentColor');
+  circle.setAttribute('stroke-width', '1.8');
+  svg.append(circle);
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', 'currentColor');
+  path.setAttribute('stroke-width', '1.8');
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('d', 'M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6 16.8 7.2M7.2 16.8 5.6 18.4');
+  svg.append(path);
+  return svg;
+}
+function readTagFilter() {
+  try { tagFilter = store.normalizeTagName(localStorage.getItem(TAG_FILTER_KEY) || ''); }
+  catch { tagFilter = ''; }
+}
+function setTagFilter(name) {
+  tagFilter = store.normalizeTagName(name || '');
+  try {
+    if (tagFilter) localStorage.setItem(TAG_FILTER_KEY, tagFilter);
+    else localStorage.removeItem(TAG_FILTER_KEY);
+  } catch {}
+  render();
+}
+function renderTagBar() {
+  const bar = $('#tag-bar');
+  const catalog = store.getTagCatalog();
+  const used = catalog.filter((t) => t.count > 0 || t.name === tagFilter);
+  const show = used.length > 0 || catalog.length > 0 || !!tagFilter;
+  bar.hidden = !show;
+  dumpEl.placeholder = tagFilter
+    ? `Adding to #${tagFilter}`
+    : 'Buy milk tomorrow. Call mum Friday. Dentist at 3pm next Tuesday.';
+  if (!show) { bar.replaceChildren(); return; }
+  const chips = el('div', { class: 'tag-chips', role: 'toolbar', 'aria-label': 'Filter by tag' });
+  chips.append(el('button', {
+    type: 'button',
+    class: 'tag-chip' + (tagFilter ? '' : ' on'),
+    'aria-pressed': tagFilter ? 'false' : 'true',
+    text: 'All',
+    onclick: () => setTagFilter(''),
+  }));
+  for (const tag of used) {
+    const on = tagFilter === tag.name;
+    chips.append(el('button', {
+      type: 'button',
+      class: chipClass(tag.name, on ? 'on' : ''),
+      'aria-pressed': on ? 'true' : 'false',
+      'aria-label': `Filter by #${tag.name}, ${plural(tag.count, 'task')}`,
+      onclick: () => setTagFilter(on ? '' : tag.name),
+    }, `#${tag.name}`, el('span', { class: 'tag-count', text: String(tag.count) })));
+  }
+  chips.append(el('button', {
+    type: 'button',
+    class: 'tag-chip manage',
+    'aria-haspopup': 'dialog',
+    onclick: () => openTags(),
+  }, gearIcon(), el('span', { text: 'Manage' })));
+  const status = tagFilter ? el('p', { class: 'tag-filter' },
+    el('span', { text: `Filtered by #${tagFilter}` }),
+    el('button', { type: 'button', 'aria-label': 'Clear tag filter', text: '×', onclick: () => setTagFilter('') }),
+  ) : null;
+  bar.replaceChildren(chips, status);
+}
+function taskTagRow(t) {
+  if (!t.tags || !t.tags.length) return null;
+  return el('div', { class: 'task-tags' }, t.tags.map((name) => el('button', {
+    type: 'button',
+    class: chipClass(name, 'mini'),
+    text: '#' + name,
+    'aria-label': `Filter by #${name}`,
+    onclick: (e) => {
+      e.stopPropagation();
+      setTagFilter(tagFilter === name ? '' : name);
+    },
+  })));
+}
+function renderEditorTags() {
+  const box = $('#editor-tags');
+  if (!box) return;
+  box.replaceChildren(...editorTags.map((name) => el('span', { class: chipClass(name, 'mini') },
+    el('span', { text: '#' + name }),
+    el('button', {
+      type: 'button',
+      class: 'tag-x',
+      'aria-label': `Remove #${name}`,
+      text: '×',
+      onclick: () => {
+        editorTags = editorTags.filter((n) => n !== name);
+        renderEditorTags();
+      },
+    }),
+  )));
+  const list = $('#editor-tag-suggestions');
+  const have = new Set(editorTags);
+  list.replaceChildren(...store.getTagCatalog()
+    .filter((t) => !have.has(t.name))
+    .map((t) => el('option', { value: t.name })));
+}
+function addEditorTag() {
+  const input = $('#editor-tag-input');
+  const name = store.normalizeTagName(input.value);
+  if (!name) {
+    if (input.value.trim()) toast('Tags need a letter, and can use numbers, - or _.');
+    input.focus();
+    return;
+  }
+  if (!editorTags.includes(name)) editorTags = store.normalizeTags([...editorTags, name]);
+  input.value = '';
+  renderEditorTags();
+  input.focus();
+}
+function fillPalette(box, selected, onPick, label) {
+  box.setAttribute('role', 'radiogroup');
+  box.setAttribute('aria-label', label);
+  const choices = [['', 'Default'], ...store.TAG_COLORS.map((id) => [id, TAG_COLOR_LABELS[id] || id])];
+  box.replaceChildren(...choices.map(([id, text]) => {
+    const pressed = (selected || '') === id;
+    return el('button', {
+      type: 'button',
+      class: 'swatch' + (id ? ' c-' + id : '') + (pressed ? ' on' : ''),
+      role: 'radio',
+      'aria-checked': pressed ? 'true' : 'false',
+      'aria-label': text,
+      title: text,
+      onclick: () => onPick(id),
+    });
+  }));
+}
+function paintNewPalette() {
+  fillPalette($('#new-tag-palette'), newTagColor, (id) => {
+    newTagColor = id;
+    paintNewPalette();
+  }, 'Colour for the new tag');
+}
+function tagsOpen() { return $('#tags-dialog') && $('#tags-dialog').open; }
+function renderTagManager() {
+  const list = $('#tag-manager');
+  const catalog = store.getTagCatalog();
+  $('#tags-empty').hidden = catalog.length > 0;
+  const keepFocus = renamingTag && document.activeElement && document.activeElement.classList.contains('tag-rename')
+    ? document.activeElement.value : null;
+  list.replaceChildren(...catalog.map((tag) => {
+    const head = el('div', { class: 'tag-row-head' });
+    if (renamingTag === tag.name) {
+      const input = el('input', {
+        type: 'text', class: 'tag-rename', value: keepFocus != null ? keepFocus : tag.name,
+        'aria-label': `New name for #${tag.name}`, maxlength: '40',
+      });
+      const save = () => {
+        const next = store.normalizeTagName(input.value);
+        if (!next) { toast('Tags need a letter, and can use numbers, - or _.'); input.focus(); return; }
+        if (next !== tag.name) {
+          const result = store.renameTag(tag.name, next);
+          if (tagFilter === tag.name) tagFilter = next;
+          try { if (tagFilter) localStorage.setItem(TAG_FILTER_KEY, tagFilter); } catch {}
+          toast(result.merged ? `Merged #${tag.name} into #${next}` : `Renamed #${tag.name} to #${next}`);
+        }
+        renamingTag = '';
+        render();
+      };
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); save(); }
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); renamingTag = ''; renderTagManager(); }
+      });
+      head.append(
+        input,
+        el('button', { type: 'button', class: 'save', text: 'Save', onclick: save }),
+        el('button', { type: 'button', text: 'Cancel', onclick: () => { renamingTag = ''; renderTagManager(); } }),
+      );
+    } else {
+      head.append(
+        el('span', { class: chipClass(tag.name, 'mini'), text: `#${tag.name}` }),
+        el('span', { class: 'tag-meta', text: plural(tag.count, 'task') }),
+        el('button', { type: 'button', text: 'Rename', onclick: () => { renamingTag = tag.name; renderTagManager(); } }),
+        el('button', { type: 'button', class: 'danger-text', text: 'Delete', onclick: () => removeManagedTag(tag) }),
+      );
+    }
+    const colors = el('div', { class: 'palette' });
+    fillPalette(colors, tag.color || '', (id) => store.setTagColor(tag.name, id), `Colour for #${tag.name}`);
+    return el('li', { class: 'tag-row' }, head, colors);
+  }));
+  if (renamingTag) {
+    const input = list.querySelector('.tag-rename');
+    if (input) { input.focus(); if (keepFocus == null) input.select(); }
+  }
+}
+function hideTagUndo() {
+  const bar = $('#tags-undo');
+  if (bar) bar.hidden = true;
+}
+function undoManagedTag(undo) {
+  if (!undo || pendingTagUndo !== undo) return;
+  pendingTagUndo = null;
+  store.undoDeleteTag(undo);
+  hideTagUndo();
+  hideToast();
+}
+function removeManagedTag(tag) {
+  const msg = tag.count
+    ? `Delete #${tag.name}? It will be removed from ${plural(tag.count, 'task')}. The tasks stay.`
+    : `Delete #${tag.name}?`;
+  if (!window.confirm(msg)) return;
+  const undo = store.deleteTag(tag.name);
+  if (!undo) return;
+  if (tagFilter === tag.name) {
+    tagFilter = '';
+    try { localStorage.removeItem(TAG_FILTER_KEY); } catch {}
+  }
+  pendingTagUndo = undo;
+  const bar = $('#tags-undo');
+  $('#tags-undo-msg').textContent = `Deleted #${tag.name}`;
+  bar.hidden = false;
+  toast(`Deleted #${tag.name}`, 'Undo', () => undoManagedTag(undo));
+}
+function openTags() {
+  renamingTag = '';
+  newTagColor = '';
+  paintNewPalette();
+  renderTagManager();
+  const dlg = $('#tags-dialog');
+  if (!dlg.open) dlg.showModal();
+  $('#new-tag-name').focus();
+}
+function closeTags() {
+  renamingTag = '';
+  const dlg = $('#tags-dialog');
+  if (dlg.open) dlg.close();
+}
+function setupTags() {
+  $('#tags-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = $('#new-tag-name');
+    const name = store.normalizeTagName(input.value);
+    if (!name) {
+      toast('Tags need a letter, and can use numbers, - or _.');
+      input.focus();
+      return;
+    }
+    const existed = store.getTagCatalog().some((t) => t.name === name);
+    const color = newTagColor;
+    store.addTag(name, color);
+    input.value = '';
+    newTagColor = '';
+    paintNewPalette();
+    if (existed && !color) toast(`#${name} is already there`);
+    else if (existed) toast(`Updated the colour of #${name}`);
+    input.focus();
+  });
+  $('#tags-close').addEventListener('click', () => closeTags());
+  $('#tags-undo-btn').addEventListener('click', () => undoManagedTag(pendingTagUndo));
+  $('#manage-tags').addEventListener('click', () => openTags());
+  const dlg = $('#tags-dialog');
+  dlg.addEventListener('cancel', (e) => { e.preventDefault(); closeTags(); });
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) closeTags(); });
+  dlg.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab') return;
+    const nodes = [...dlg.querySelectorAll('button, input')].filter((n) => !n.disabled && n.offsetParent !== null);
     if (!nodes.length) return;
     const first = nodes[0], last = nodes[nodes.length - 1];
     if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
@@ -369,6 +692,7 @@ function submit() {
   let items = [];
   try { items = parseTasks(text, new Date()); } catch (e) { console.error(e); }
   items = (items || []).filter((i) => i && i.title && i.title.trim());
+  if (tagFilter) items = items.map((it) => ({ ...it, tags: [...(it.tags || []), tagFilter] }));
   if (!items.length) { toast('Couldn’t find any tasks in that.'); return; }
   const created = store.addTasks(items);
   newIds = new Set(created.map((t) => t.id));
@@ -449,12 +773,36 @@ $('#example').addEventListener('click', () => {
   store.setDraft(dumpEl.value); updateCount(); dumpEl.focus();
 });
 
+function tagFromSearch(raw) {
+  const hash = /^#([a-z0-9_-]+)$/i.exec(raw);
+  return hash ? store.normalizeTagName(hash[1]) : '';
+}
 searchEl.addEventListener('input', () => {
-  query = searchEl.value.trim();
+  const raw = searchEl.value.trim();
+  const asTag = tagFromSearch(raw);
+  if (asTag && store.getTagCatalog().some((t) => t.name === asTag)) {
+    query = '';
+    searchEl.value = '';
+    setTagFilter(asTag);
+    return;
+  }
+  query = raw;
   if (query) completedEl.open = true;
   render();
 });
-searchEl.addEventListener('keydown', (e) => { if (e.key === 'Escape') { searchEl.value = ''; query = ''; render(); searchEl.blur(); } });
+searchEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const asTag = tagFromSearch(searchEl.value.trim());
+    if (asTag) {
+      e.preventDefault();
+      query = '';
+      searchEl.value = '';
+      setTagFilter(asTag);
+      return;
+    }
+  }
+  if (e.key === 'Escape') { searchEl.value = ''; query = ''; render(); searchEl.blur(); }
+});
 
 $('#clear-completed').addEventListener('click', () => {
   const removed = store.clearCompleted();
@@ -474,6 +822,7 @@ fileEl.addEventListener('change', async () => {
   const f = fileEl.files[0]; fileEl.value = '';
   if (!f) return;
   const before = store.snapshot();
+  const beforeTags = store.getTagRegistry();
   try {
     const { added, merged } = store.importJSON(await f.text());
     const n = added + merged;
@@ -481,12 +830,13 @@ fileEl.addEventListener('change', async () => {
     if (added && merged) msg = `Imported ${plural(added, 'task')} and updated ${plural(merged, 'note')}`;
     else if (merged) msg = `Updated ${plural(merged, 'note')}`;
     else if (added) msg = `Imported ${plural(added, 'task')}`;
-    toast(msg, n ? 'Undo' : '', n ? () => store.replaceAll(before) : null);
+    toast(msg, n ? 'Undo' : '', n ? () => { store.replaceAll(before); store.replaceTagRegistry(beforeTags); } : null);
   } catch (err) { toast(err.message); }
 });
 
 document.addEventListener('keydown', (e) => {
   if ($('#editor').open) return;
+  if ($('#tags-dialog') && $('#tags-dialog').open) return;
   const installDialog = $('#install-dialog');
   if (installDialog && installDialog.open) return;
   const tag = (e.target.tagName || '').toLowerCase();
@@ -499,10 +849,16 @@ document.addEventListener('keydown', (e) => {
 });
 
 store.subscribe(render);
-document.addEventListener('visibilitychange', () => { if (!document.hidden && !editing && !editor) render(); });
-setInterval(() => { if (!document.hidden && !editing && !editor && !pending.size) render(); }, 60000);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && !editing && !editor && !tagsOpen()) render();
+});
+setInterval(() => {
+  if (!document.hidden && !editing && !editor && !tagsOpen() && !pending.size) render();
+}, 60000);
 
 setupEditor();
+setupTags();
+readTagFilter();
 store.load();
 dumpEl.value = store.getDraft();
 updateCount();
