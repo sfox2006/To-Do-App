@@ -1,6 +1,6 @@
 /* Service worker: offline-first app shell + stale-while-revalidate.
    Bump VERSION whenever you want every client to re-download the shell. */
-const VERSION = 'v12';
+const VERSION = 'v13';
 const CACHE = `todo-app-${VERSION}`;
 const APP_PATH = '/To-Do-App/';
 

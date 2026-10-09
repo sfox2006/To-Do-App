@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <title>Brain Dump · To-do</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="description" content="Dump everything on your mind into one box. It becomes a tidy to-do list sorted by date.">
   <meta name="theme-color" content="#f6f7fb" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
@@ -35,10 +35,6 @@
         <h1>Brain Dump</h1>
         <p class="tag">Type or dictate everything. We'll sort it out.</p>
       </div>
-      <p id="sync-status" class="sync-status">
-        <span id="sync-dot" class="sync-dot" data-state="syncing" aria-hidden="true"></span>
-        <span id="account-label">Syncing</span>
-      </p>
       <button type="button" id="install-app">
         <svg class="install-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <rect x="7" y="2" width="10" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
@@ -46,6 +42,33 @@
         </svg>
         Install app
       </button>
+      <p id="sync-status" class="sync-status">
+        <span id="sync-dot" class="sync-dot" data-state="syncing" aria-hidden="true"></span>
+        <span id="account-label">Syncing</span>
+      </p>
+      <div class="menu-wrap">
+        <button type="button" id="menu-btn" aria-label="Menu" aria-expanded="false" aria-controls="app-menu" aria-haspopup="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
+            <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <div id="app-menu" class="app-menu" hidden>
+          <div role="menu" aria-label="Menu">
+            <button type="button" id="manage-tags" role="menuitem">Manage tags</button>
+            <button type="button" id="menu-install" class="menu-install" role="menuitem" hidden>Install app</button>
+            <button type="button" id="export" role="menuitem">Export backup</button>
+            <button type="button" id="import" role="menuitem">Import backup</button>
+          </div>
+          <div class="menu-sync">
+            <p id="menu-sync-detail">Syncing</p>
+            <label class="sync-switch" for="sync-enabled">
+              <input id="sync-enabled" type="checkbox" checked>
+              Sync on this device
+            </label>
+          </div>
+          <input id="import-file" type="file" accept="application/json,.json" hidden>
+        </div>
+      </div>
     </div>
   </header>
   <p id="sync-live" class="sr-only" aria-live="polite"></p>
@@ -53,7 +76,7 @@
   <main>
     <form id="dump-form" class="dump" autocomplete="off">
       <label for="dump" class="dump-label">What's on your mind?</label>
-      <textarea id="dump" name="dump" rows="5" enterkeyhint="enter" spellcheck="true"
+      <textarea id="dump" name="dump" rows="2" enterkeyhint="enter" spellcheck="true"
         placeholder="Buy milk tomorrow. Call mum Friday. Dentist at 3pm next Tuesday."
         aria-describedby="dump-hint"></textarea>
       <div class="dump-row">
@@ -87,17 +110,7 @@
   </main>
 
   <footer class="foot">
-    <div class="foot-buttons">
-      <button type="button" id="manage-tags" class="ghost">Manage tags</button>
-      <button type="button" id="export" class="ghost">Export backup</button>
-      <button type="button" id="import" class="ghost">Import backup</button>
-      <input id="import-file" type="file" accept="application/json,.json" hidden>
-      <label class="sync-switch" for="sync-enabled">
-        <input id="sync-enabled" type="checkbox" checked>
-        Sync
-      </label>
-    </div>
-    <p class="shortcuts"><kbd>Ctrl/⌘</kbd>+<kbd>Enter</kbd> add · <kbd>/</kbd> search · <kbd>N</kbd> new dump · <kbd>Esc</kbd> cancel</p>
+    <p class="shortcuts"><kbd>Ctrl/⌘</kbd>+<kbd>Enter</kbd> add · <kbd>/</kbd> search · <kbd>N</kbd> new dump · <kbd>Esc</kbd> cancel · menu for backup and sync</p>
     <p class="shortcuts">Swipe a task right to complete, left to delete. Undo is on the toast, or open Completed and tap Restore. The list is kept on this device and shared when Sync is on.</p>
     <p class="shortcuts">Tap a task to edit it, add a note, or add a tag. Tap a tag to filter. Tap the date for a quick in-list edit.</p>
   </footer>
@@ -117,35 +130,36 @@
 
   <dialog id="editor" class="editor" aria-labelledby="editor-heading" aria-describedby="editor-hint">
     <form id="editor-form" class="editor-panel">
-      <div class="editor-handle" aria-hidden="true"></div>
-      <h2 id="editor-heading">Edit task</h2>
-      <p id="editor-hint" class="sr-only">Change the title, date, time, note, and tags. Press Escape to cancel.</p>
-      <label for="editor-task-title">Title</label>
-      <input id="editor-task-title" type="text" maxlength="500" autocomplete="off" spellcheck="true" enterkeyhint="done" required>
-      <div class="editor-when">
-        <label for="editor-date">Date
-          <input id="editor-date" type="date">
-        </label>
-        <label for="editor-time">Time (optional)
-          <input id="editor-time" type="time">
-        </label>
-      </div>
-      <label for="editor-note">Note</label>
-      <textarea id="editor-note" rows="5" maxlength="4000" placeholder="Add a note…" spellcheck="true"></textarea>
-      <label for="editor-tag-input">Tags</label>
-      <div id="editor-tags" class="editor-tags"></div>
-      <div class="editor-tag-add">
-        <input id="editor-tag-input" type="text" maxlength="40" placeholder="Add a tag" list="editor-tag-suggestions" autocomplete="off" enterkeyhint="done" aria-describedby="editor-tag-hint">
-        <button type="button" id="editor-tag-add">Add</button>
-      </div>
-      <p id="editor-tag-hint" class="hint">A word like work or uni-admin. Pick a suggestion, or type a new one.</p>
-      <datalist id="editor-tag-suggestions"></datalist>
-      <div class="editor-actions">
-        <button type="submit" class="save" id="editor-save">Save</button>
+      <div class="editor-bar">
         <button type="button" id="editor-cancel">Cancel</button>
-        <button type="button" id="editor-nodate">No date</button>
+        <h2 id="editor-heading">Edit task</h2>
+        <button type="submit" class="save" id="editor-save">Save</button>
       </div>
-      <button type="button" id="editor-delete" class="editor-delete">Delete task</button>
+      <div class="editor-body">
+        <p id="editor-hint" class="sr-only">Change the title, date, time, note, and tags. Press Escape to cancel.</p>
+        <label for="editor-task-title">Title</label>
+        <input id="editor-task-title" type="text" maxlength="500" autocomplete="off" spellcheck="true" enterkeyhint="done" required>
+        <div class="editor-when">
+          <label for="editor-date">Date
+            <input id="editor-date" type="date">
+          </label>
+          <label for="editor-time">Time (optional)
+            <input id="editor-time" type="time">
+          </label>
+        </div>
+        <button type="button" id="editor-nodate">Clear date</button>
+        <label for="editor-note">Note</label>
+        <textarea id="editor-note" rows="5" maxlength="4000" placeholder="Add a note…" spellcheck="true"></textarea>
+        <label for="editor-tag-input">Tags</label>
+        <div id="editor-tags" class="editor-tags"></div>
+        <div class="editor-tag-add">
+          <input id="editor-tag-input" type="text" maxlength="40" placeholder="Add a tag" list="editor-tag-suggestions" autocomplete="off" enterkeyhint="done" aria-describedby="editor-tag-hint">
+          <button type="button" id="editor-tag-add">Add</button>
+        </div>
+        <p id="editor-tag-hint" class="hint">A word like work or uni-admin. Pick a suggestion, or type a new one.</p>
+        <datalist id="editor-tag-suggestions"></datalist>
+        <button type="button" id="editor-delete" class="editor-delete">Delete task</button>
+      </div>
     </form>
   </dialog>
 

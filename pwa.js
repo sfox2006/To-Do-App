@@ -138,7 +138,9 @@ function bindInstall() {
   }
 
   function restoreInstallFocus() {
-    if (!install.hidden) install.focus();
+    const menuBtn = document.getElementById('menu-btn');
+    if (!install.hidden && install.offsetParent !== null) install.focus();
+    else if (menuBtn) menuBtn.focus();
   }
 
   function openInstallDialog() {
